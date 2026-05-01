@@ -1,0 +1,62 @@
+from unittest.mock import Mock, patch
+
+from src.clients import arxiv_client, medium_client
+
+ARXIV_SAMPLE_XML = '''<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom" xmlns:arxiv="http://arxiv.org/schemas/atom">
+  <entry>
+    <id>http://arxiv.org/abs/1234.5678v1</id>
+    <title>Example Paper Title</title>
+    <summary>This is a sample abstract.</summary>
+    <published>2026-05-01T12:00:00Z</published>
+    <author><name>Jane Doe</name></author>
+    <arxiv:primary_category term="cs.AI" />
+  </entry>
+</feed>
+'''
+
+MEDIUM_SAMPLE_RSS = '''<?xml version="1.0" encoding="UTF-8"?>
+<rss xmlns:dc="http://purl.org/dc/elements/1.1/" version="2.0">
+  <channel>
+    <item>
+      <guid>https://medium.com/@user/example-article</guid>
+      <title>Example Medium Story</title>
+      <dc:creator>John Smith</dc:creator>
+      <link>https://medium.com/@user/example-article</link>
+      <pubDate>Thu, 01 May 2026 12:00:00 GMT</pubDate>
+      <description>A short article summary.</description>
+    </item>
+  </channel>
+</rss>
+'''
+
+
+@patch("src.clients.arxiv_client.requests.get")
+def test_fetch_arxiv_articles(mock_get: Mock):
+    mock_response = Mock()
+    mock_response.status_code = 200
+    mock_response.text = ARXIV_SAMPLE_XML
+    mock_get.return_value = mock_response
+
+    results = arxiv_client.fetch_arxiv_articles(limit=1)
+
+    assert len(results) == 1
+    assert results[0].id == "http://arxiv.org/abs/1234.5678v1"
+    assert results[0].source == "arxiv"
+    assert results[0].title == "Example Paper Title"
+    assert results[0].authors == ["Jane Doe"]
+
+
+@patch("src.clients.medium_client.requests.get")
+def test_fetch_medium_articles(mock_get: Mock):
+    mock_response = Mock()
+    mock_response.status_code = 200
+    mock_response.text = MEDIUM_SAMPLE_RSS
+    mock_get.return_value = mock_response
+
+    results = medium_client.fetch_medium_articles(limit=1)
+
+    assert len(results) == 1
+    assert results[0].source == "medium"
+    assert results[0].title == "Example Medium Story"
+    assert "http" in results[0].url

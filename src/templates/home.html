@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+
+{% block content %}
+  <section class="search-panel">
+    <form method="get" action="/">
+      <label for="source">Source</label>
+      <select id="source" name="source">
+        {% for src in sources %}
+          <option value="{{ src.id }}" {% if src.id == selected_source %}selected{% endif %}>{{ src.name }}</option>
+        {% endfor %}
+      </select>
+
+      <label for="query">Search term</label>
+      <input id="query" name="query" type="text" value="{{ query }}" placeholder="Optional keyword" />
+
+      <button type="submit" name="fetch" value="1">Fetch Listings</button>
+    </form>
+  </section>
+
+  {% if result %}
+    {% if result.status == 'success' %}
+      <section class="results">
+        <h2>Results from {{ selected_source | capitalize }}</h2>
+        <div class="cards">
+          {% for item in result['items'] %}
+            <article class="card">
+              <h3>{{ item.title }}</h3>
+              <p class="meta">{{ item.source_label }} • {{ item.published_at[:10] }}</p>
+              <p class="authors">{{ item.authors | join(', ') }}</p>
+              <p class="summary">{{ item.summary }}</p>
+              <a class="detail-link" href="{{ url_for('item_detail', item_id=item.id, source=selected_source) }}">View details</a>
+            </article>
+          {% endfor %}
+        </div>
+      </section>
+    {% elif result.status == 'empty' %}
+      <section class="status-message">
+        <p>No results were found for this source.</p>
+      </section>
+    {% else %}
+      <section class="status-message error">
+        <p>{{ result.error_message or 'Unable to load items from the selected source.' }}</p>
+        <a href="{{ url_for('home', source=selected_source, query=query, fetch=1) }}">Retry</a>
+      </section>
+    {% endif %}
+  {% endif %}
+{% endblock %}
