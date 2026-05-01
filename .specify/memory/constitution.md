@@ -1,50 +1,71 @@
-# [PROJECT_NAME] Constitution
-<!-- Example: Spec Constitution, TaskFlow Constitution, etc. -->
+<!--
+Sync Impact Report
+Version change: none → 1.0.0
+Modified principles:
+- New principle I. Code Quality & Maintainability
+- New principle II. User Experience Consistency
+- New principle III. Performance Requirements
+Added sections:
+- Quality and Performance Standards
+- Review and Delivery Process
+Removed sections:
+- None
+Templates reviewed:
+- ✅ .specify/templates/plan-template.md
+- ✅ .specify/templates/spec-template.md
+- ✅ .specify/templates/tasks-template.md
+Follow-up TODOs:
+- None
+-->
+
+# Webapp Constitution
 
 ## Core Principles
 
-### [PRINCIPLE_1_NAME]
-<!-- Example: I. Library-First -->
-[PRINCIPLE_1_DESCRIPTION]
-<!-- Example: Every feature starts as a standalone library; Libraries must be self-contained, independently testable, documented; Clear purpose required - no organizational-only libraries -->
+### I. Code Quality & Maintainability
+All code MUST be written, reviewed, and maintained to standards that keep the codebase reliable and easy to change.
+- Every change MUST pass automated linting, formatting, static analysis, and targeted tests before merge.
+- Code MUST be modular, well-named, and covered by tests that verify behavior, not just implementation.
+- Technical debt MUST be documented, minimized, and addressed through prioritized follow-up tasks.
+Rationale: High quality code reduces defects, eases review, and enables safe evolution.
 
-### [PRINCIPLE_2_NAME]
-<!-- Example: II. CLI Interface -->
-[PRINCIPLE_2_DESCRIPTION]
-<!-- Example: Every library exposes functionality via CLI; Text in/out protocol: stdin/args → stdout, errors → stderr; Support JSON + human-readable formats -->
+### II. User Experience Consistency
+All user-facing behavior MUST be consistent across workflows, screens, and error states.
+- Design patterns, interaction flows, messaging, and visual feedback MUST follow a shared project standard.
+- Errors, transitions, and confirmations MUST be predictable, accessible, and support recovery.
+- New UI/UX changes MUST be validated against existing journeys to avoid regressions.
+Rationale: Consistent experience builds user trust and lowers support cost.
 
-### [PRINCIPLE_3_NAME]
-<!-- Example: III. Test-First (NON-NEGOTIABLE) -->
-[PRINCIPLE_3_DESCRIPTION]
-<!-- Example: TDD mandatory: Tests written → User approved → Tests fail → Then implement; Red-Green-Refactor cycle strictly enforced -->
+### III. Performance Requirements
+The application MUST meet defined performance and resource targets for responsiveness and scalability.
+- Performance goals MUST be established for latency, memory, CPU, and browser responsiveness when applicable.
+- Changes that affect runtime cost, page load, or backend throughput MUST include regression metrics and validation.
+- Performance regressions MUST be fixed before release, and non-functional budgets MUST be treated as requirements.
+Rationale: Performance is a product quality attribute that preserves usability and reliability as the system grows.
 
-### [PRINCIPLE_4_NAME]
-<!-- Example: IV. Integration Testing -->
-[PRINCIPLE_4_DESCRIPTION]
-<!-- Example: Focus areas requiring integration tests: New library contract tests, Contract changes, Inter-service communication, Shared schemas -->
+## Quality and Performance Standards
+- Every feature MUST include measurable quality and performance criteria in its specification.
+- Automated quality checks MUST cover linting, formatting, static analysis, security scanning, and unit/integration tests.
+- Performance checks MUST include benchmark or profiling evidence for changes that impact user experience or system load.
+- Consistency checks MUST include UX review, accessibility validation, and error-handling verification.
+- Critical non-functional violations MUST be blocked until remediation is complete.
 
-### [PRINCIPLE_5_NAME]
-<!-- Example: V. Observability, VI. Versioning & Breaking Changes, VII. Simplicity -->
-[PRINCIPLE_5_DESCRIPTION]
-<!-- Example: Text I/O ensures debuggability; Structured logging required; Or: MAJOR.MINOR.BUILD format; Or: Start simple, YAGNI principles -->
-
-## [SECTION_2_NAME]
-<!-- Example: Additional Constraints, Security Requirements, Performance Standards, etc. -->
-
-[SECTION_2_CONTENT]
-<!-- Example: Technology stack requirements, compliance standards, deployment policies, etc. -->
-
-## [SECTION_3_NAME]
-<!-- Example: Development Workflow, Review Process, Quality Gates, etc. -->
-
-[SECTION_3_CONTENT]
-<!-- Example: Code review requirements, testing gates, deployment approval process, etc. -->
+## Review and Delivery Process
+- All work MUST be delivered through feature branches and reviewed by at least one peer.
+- Pull requests MUST reference the applicable constitution principles and evidence compliance.
+- Acceptance criteria MUST include quality, consistency, and performance validation when those dimensions are affected.
+- Documentation updates MUST accompany behavior changes that affect developer experience or end-user workflows.
+- Small, incremental changes are preferred; large changes MUST include a migration plan and explicit risk assessment.
 
 ## Governance
-<!-- Example: Constitution supersedes all other practices; Amendments require documentation, approval, migration plan -->
+- This constitution supersedes informal shortcuts and defines the minimum standards for code quality, user experience, and performance.
+- Amendments MUST be documented in the constitution file, including rationale, impact, and any migration guidance.
+- Version changes MUST follow semantic versioning:
+  - MAJOR for principle redefinition or policy removal.
+  - MINOR for new principles, sections, or material process additions.
+  - PATCH for wording clarifications or editorial refinements.
+- Each release or PR MUST verify constitution compliance in the review checklist.
+- Compliance reviews MUST be explicit: reviewers must confirm which principles were evaluated and how.
+- When policy conflicts arise, the most restrictive applicable rule MUST be enforced until the constitution is updated.
 
-[GOVERNANCE_RULES]
-<!-- Example: All PRs/reviews must verify compliance; Complexity must be justified; Use [GUIDANCE_FILE] for runtime development guidance -->
-
-**Version**: [CONSTITUTION_VERSION] | **Ratified**: [RATIFICATION_DATE] | **Last Amended**: [LAST_AMENDED_DATE]
-<!-- Example: Version: 2.1.1 | Ratified: 2025-06-13 | Last Amended: 2025-07-16 -->
+**Version**: 1.0.0 | **Ratified**: 2026-05-01 | **Last Amended**: 2026-05-01
