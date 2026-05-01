@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+
+{% block content %}
+  <section class="detail-panel">
+    <article>
+      <h2>{{ item.title }}</h2>
+      <p class="meta">{{ item.source_label }} • {{ item.published_at[:10] }}</p>
+      <p class="authors">Authors: {{ item.authors | join(', ') }}</p>
+      <p class="summary">{{ item.summary }}</p>
+      <p class="source-link">
+        <a href="{{ item.url }}" target="_blank" rel="noopener">Open original source</a>
+      </p>
+      <p class="return-link">
+        <a href="{{ url_for('home', source=source, fetch=1) }}">Return to list</a>
+      </p>
+    </article>
+  </section>
+{% endblock %}
