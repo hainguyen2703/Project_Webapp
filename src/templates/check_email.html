@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="form-panel">
+  <h2>Check your email</h2>
+
+  {% with messages = get_flashed_messages() %}
+    {% if messages %}
+      <ul class="flash-list">
+        {% for msg in messages %}<li>{{ msg }}</li>{% endfor %}
+      </ul>
+    {% endif %}
+  {% endwith %}
+
+  <div class="info-message">
+    <p>We sent a verification link to <strong>{{ masked_email }}</strong>.</p>
+    <p>Click the link in the email to activate your account. The link expires in 24 hours.</p>
+  </div>
+
+  {% if resend_message == 'sent' %}
+    <p class="field-notice">A new verification email has been sent.</p>
+  {% elif resend_message == 'cooldown' %}
+    <p class="field-error">Please wait before requesting another email.</p>
+  {% elif resend_message == 'limit_reached' %}
+    <p class="field-error">
+      Maximum resend attempts reached. Please
+      <a href="{{ url_for('register') }}">register again</a> once your current
+      registration expires (within 24 hours).
+    </p>
+  {% endif %}
+
+  {% if resend_message != 'limit_reached' %}
+    <form method="post" action="{{ url_for('resend_verification_route') }}">
+      <button type="submit">Resend verification email</button>
+    </form>
+  {% endif %}
+</div>
+{% endblock %}

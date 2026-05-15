@@ -9,12 +9,50 @@
   <body>
     <div class="app-shell">
       <header>
-        <h1>Paper Discovery</h1>
-        <p>Choose a source and discover papers or articles from arXiv and Medium.</p>
+        <!-- T006: flex wrapper keeps h1/p on the left, hamburger on the right -->
+        <div class="nav-header">
+          <div>
+            <h1>Paper Discovery</h1>
+            <p>Choose a source and discover papers or articles from arXiv and Medium.</p>
+          </div>
+          <!-- T007: hamburger trigger button -->
+          <button
+            id="menu-trigger"
+            class="nav-trigger"
+            aria-label="Menu"
+            aria-expanded="false"
+            aria-controls="menu-dropdown"
+          >&#9776; Menu</button>
+        </div>
+        <!-- T008: dropdown nav — hidden by default (.open class toggled by JS) -->
+        <nav id="menu-dropdown" class="nav-dropdown" aria-label="Navigation">
+          <ul class="nav-dropdown__list">
+            <!-- T011: Register link (US2) -->
+            <li class="nav-dropdown__item"><a href="/register">Register</a></li>
+          </ul>
+        </nav>
       </header>
       <main>
         {% block content %}{% endblock %}
       </main>
     </div>
+    <!-- T009: vanilla JS IIFE — click-toggle + click-outside close -->
+    <script>
+      (function () {
+        var trigger = document.getElementById('menu-trigger');
+        var dropdown = document.getElementById('menu-dropdown');
+        trigger.addEventListener('click', function (e) {
+          e.stopPropagation();
+          var isOpen = dropdown.classList.toggle('open');
+          trigger.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+        });
+        document.addEventListener('click', function (e) {
+          if (!dropdown.contains(e.target) && e.target !== trigger) {
+            dropdown.classList.remove('open');
+            trigger.setAttribute('aria-expanded', 'false');
+          }
+        });
+      }());
+    </script>
   </body>
 </html>
