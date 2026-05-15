@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="form-panel">
+  {% if result == 'activated' %}
+    <h2>Email verified!</h2>
+    <p>Your account is now active. You can sign in.</p>
+  {% elif result == 'already_used' %}
+    <h2>Already verified</h2>
+    <p>This verification link has already been used. Your account is active.</p>
+  {% elif result == 'expired' %}
+    <h2>Verification link expired</h2>
+    <p>This link has expired (links are valid for 24 hours).</p>
+    {% if session.get('registration_id') %}
+      <p><a href="{{ url_for('check_email') }}">Request a new verification email</a></p>
+    {% else %}
+      <p>Please <a href="{{ url_for('register') }}">register again</a> to receive a new link.</p>
+    {% endif %}
+  {% else %}
+    <h2>Verification link not found</h2>
+    <p>This link is invalid or has already been used. Please check your email or
+       <a href="{{ url_for('register') }}">register again</a>.</p>
+  {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="form-panel">
+  <h2>Create your account</h2>
+  <form method="post" action="{{ url_for('register') }}" novalidate>
+    <div class="form-group">
+      <label for="email">Email address</label>
+      <input
+        type="email"
+        id="email"
+        name="email"
+        value="{{ form_values.get('email', '') }}"
+        autocomplete="email"
+        placeholder="you@gmail.com"
+      />
+      {% if errors.get('email') %}
+        <span class="field-error">{{ errors['email'] }}</span>
+      {% endif %}
+    </div>
+
+    <div class="form-group">
+      <label for="password">Password</label>
+      <input
+        type="password"
+        id="password"
+        name="password"
+        autocomplete="new-password"
+        placeholder="At least 8 characters"
+      />
+      {% if errors.get('password') %}
+        <span class="field-error">{{ errors['password'] }}</span>
+      {% endif %}
+    </div>
+
+    <div class="form-group form-group--checkbox">
+      <label class="checkbox-label">
+        <input type="checkbox" name="consent" value="on" {% if form_values.get('consent') == 'on' %}checked{% endif %} />
+        I agree to the <a href="/privacy-policy" target="_blank" rel="noopener">Privacy Policy</a>
+      </label>
+      {% if errors.get('consent') %}
+        <span class="field-error">{{ errors['consent'] }}</span>
+      {% endif %}
+    </div>
+
+    <button type="submit">Create account</button>
+  </form>
+</div>
+{% endblock %}

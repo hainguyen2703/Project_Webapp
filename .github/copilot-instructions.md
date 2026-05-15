@@ -1,4 +1,4 @@
 <!-- SPECKIT START -->
-Plan: specs/001-paper-discovery-site/plan.md
-Spec: specs/001-paper-discovery-site/spec.md
+Plan: specs/003-ui-guest-registration-nav/plan.md
+Spec: specs/003-ui-guest-registration-nav/spec.md
 <!-- SPECKIT END -->

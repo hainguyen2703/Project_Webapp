@@ -1,9 +1,42 @@
 from __future__ import annotations
 
-from flask import Flask, abort, jsonify, redirect, render_template, request, url_for
+import os
+from datetime import datetime, timezone
+
+from flask import Flask, abort, flash, jsonify, redirect, render_template, request, session, url_for
+from flask_mail import Mail
+
+from src.models.user import db
 from src.services.discovery_service import fetch_items
+from src.services.registration_service import (
+    register_user,
+    resend_verification,
+    send_verification_email,
+    validate_registration_input,
+    verify_account,
+)
 
 app = Flask(__name__, template_folder="templates", static_folder="static")
+
+# ── Configuration ─────────────────────────────────────────────────────────────
+app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev-secret-change-in-production")
+app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get("DATABASE_URL", "sqlite:///app.db")
+app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+
+app.config["MAIL_SERVER"] = os.environ.get("MAIL_SERVER", "smtp.gmail.com")
+app.config["MAIL_PORT"] = int(os.environ.get("MAIL_PORT", 587))
+app.config["MAIL_USE_TLS"] = os.environ.get("MAIL_USE_TLS", "true").lower() == "true"
+app.config["MAIL_USERNAME"] = os.environ.get("MAIL_USERNAME", "")
+app.config["MAIL_PASSWORD"] = os.environ.get("MAIL_PASSWORD", "")
+app.config["MAIL_DEFAULT_SENDER"] = os.environ.get("MAIL_DEFAULT_SENDER", "")
+app.config["MAIL_SUPPRESS_SEND"] = os.environ.get("MAIL_SUPPRESS_SEND", "false").lower() == "true"
+
+# ── Extensions ─────────────────────────────────────────────────────────────────
+db.init_app(app)
+mail = Mail(app)
+
+with app.app_context():
+    db.create_all()
 
 LATEST_RESULTS: dict[str, list[dict]] = {"arxiv": [], "medium": []}
 
@@ -51,6 +84,78 @@ def item_detail(item_id: str) -> str:
         abort(404)
 
     return render_template("detail.html", item=item, source=source)
+
+
+# ── Registration routes ────────────────────────────────────────────────────────
+
+def _mask_email(email: str) -> str:
+    local, domain = email.split("@", 1)
+    return local[0] + "***@" + domain
+
+
+@app.route("/register", methods=["GET", "POST"])
+def register():
+    if request.method == "GET":
+        return render_template("register.html", errors={}, form_values={})
+
+    email = request.form.get("email", "").strip().lower()
+    password = request.form.get("password", "")
+    consent = request.form.get("consent", "")
+
+    errors = validate_registration_input(email, password, consent)
+    if errors:
+        return render_template("register.html", errors=errors, form_values={"email": email}), 400
+
+    result, user, token = register_user(email, password, datetime.now(timezone.utc))
+    if result == "duplicate":
+        errors["email"] = "This email is already registered. Please sign in."
+        return render_template("register.html", errors=errors, form_values={"email": email}), 400
+
+    send_verification_email(user, token, mail)
+
+    session["registration_id"] = user.id
+    session["masked_email"] = _mask_email(user.email)
+    session["next_resend_allowed_at"] = None
+    return redirect(url_for("check_email"))
+
+
+@app.route("/check-email")
+def check_email():
+    if "registration_id" not in session:
+        return redirect(url_for("register"))
+    return render_template(
+        "check_email.html",
+        masked_email=session.get("masked_email", ""),
+        next_resend_allowed_at=session.get("next_resend_allowed_at"),
+        resend_message=request.args.get("msg"),
+    )
+
+
+@app.route("/resend-verification", methods=["POST"])
+def resend_verification_route():
+    if "registration_id" not in session:
+        return redirect(url_for("register"))
+
+    result, next_allowed = resend_verification(session["registration_id"], mail)
+
+    if result == "sent":
+        session["next_resend_allowed_at"] = next_allowed.isoformat() if next_allowed else None
+        return redirect(url_for("check_email", msg="sent"))
+    if result == "cooldown":
+        session["next_resend_allowed_at"] = next_allowed.isoformat() if next_allowed else None
+        return redirect(url_for("check_email", msg="cooldown"))
+    if result == "limit_reached":
+        return redirect(url_for("check_email", msg="limit_reached"))
+    # already_active
+    session.pop("registration_id", None)
+    flash("Your account is already verified.")
+    return redirect(url_for("register"))
+
+
+@app.route("/verify/<token>")
+def verify(token: str):
+    result = verify_account(token)
+    return render_template("verify_result.html", result=result)
 
 
 if __name__ == "__main__":
