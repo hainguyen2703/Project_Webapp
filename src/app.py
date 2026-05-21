@@ -38,11 +38,11 @@ mail = Mail(app)
 with app.app_context():
     db.create_all()
 
-LATEST_RESULTS: dict[str, list[dict]] = {"arxiv": [], "medium": []}
+LATEST_RESULTS: dict[str, list[dict]] = {"arxiv": [], "academia": []}
 
 CONTENT_SOURCES = [
     {"id": "arxiv", "name": "arXiv", "description": "Recent academic papers from arXiv."},
-    {"id": "medium", "name": "Medium", "description": "Recent articles from Medium."},
+    {"id": "academia", "name": "Academia.edu", "description": "Academic papers from Academia.edu."},
 ]
 
 

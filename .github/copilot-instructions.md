@@ -1,4 +1,4 @@
 <!-- SPECKIT START -->
-Plan: specs/003-ui-guest-registration-nav/plan.md
-Spec: specs/003-ui-guest-registration-nav/spec.md
+Plan: specs/004-replace-medium-academia/plan.md
+Spec: specs/004-replace-medium-academia/spec.md
 <!-- SPECKIT END -->

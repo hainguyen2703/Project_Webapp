@@ -1,6 +1,6 @@
 from unittest.mock import Mock, patch
 
-from src.clients import arxiv_client, medium_client
+from src.clients import arxiv_client, academia_client
 
 ARXIV_SAMPLE_XML = '''<?xml version="1.0" encoding="UTF-8"?>
 <feed xmlns="http://www.w3.org/2005/Atom" xmlns:arxiv="http://arxiv.org/schemas/atom">
@@ -15,19 +15,16 @@ ARXIV_SAMPLE_XML = '''<?xml version="1.0" encoding="UTF-8"?>
 </feed>
 '''
 
-MEDIUM_SAMPLE_RSS = '''<?xml version="1.0" encoding="UTF-8"?>
-<rss xmlns:dc="http://purl.org/dc/elements/1.1/" version="2.0">
-  <channel>
-    <item>
-      <guid>https://medium.com/@user/example-article</guid>
-      <title>Example Medium Story</title>
-      <dc:creator>John Smith</dc:creator>
-      <link>https://medium.com/@user/example-article</link>
-      <pubDate>Thu, 01 May 2026 12:00:00 GMT</pubDate>
-      <description>A short article summary.</description>
-    </item>
-  </channel>
-</rss>
+ACADEMIA_SAMPLE_HTML = '''<html><body>
+  <div data-document-id="12345678">
+    <h3><a class="document-title" href="/12345678/Example_Paper_Title">
+      Example Paper Title
+    </a></h3>
+    <span class="author-name">Jane Smith</span>
+    <p class="preview">A short excerpt about machine learning research.</p>
+    <time datetime="2025-01-15">January 15, 2025</time>
+  </div>
+</body></html>
 '''
 
 
@@ -47,16 +44,21 @@ def test_fetch_arxiv_articles(mock_get: Mock):
     assert results[0].authors == ["Jane Doe"]
 
 
-@patch("src.clients.medium_client.requests.get")
-def test_fetch_medium_articles(mock_get: Mock):
+@patch("src.clients.academia_client.requests.get")
+def test_fetch_academia_articles(mock_get: Mock):
     mock_response = Mock()
     mock_response.status_code = 200
-    mock_response.text = MEDIUM_SAMPLE_RSS
+    mock_response.text = ACADEMIA_SAMPLE_HTML
     mock_get.return_value = mock_response
 
-    results = medium_client.fetch_medium_articles(limit=1)
+    results = academia_client.fetch_academia_articles(limit=1)
 
     assert len(results) == 1
-    assert results[0].source == "medium"
-    assert results[0].title == "Example Medium Story"
-    assert "http" in results[0].url
+    assert results[0].source == "academia"
+    assert results[0].source_label == "Academia.edu"
+    assert results[0].title == "Example Paper Title"
+    assert results[0].authors == ["Jane Smith"]
+    assert "excerpt" in results[0].summary or "machine learning" in results[0].summary
+    assert "2025" in results[0].published_at
+    assert "academia.edu" in results[0].url
+
