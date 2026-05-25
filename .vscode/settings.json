@@ -8,7 +8,11 @@
     },
     "chat.tools.terminal.autoApprove": {
         ".specify/scripts/bash/": true,
-        ".specify/scripts/powershell/": true
+        ".specify/scripts/powershell/": true,
+        "/^New-Item -ItemType Directory -Force -Path \"d:\\\\Project\\\\Web\\\\Project_Webapp\\\\specs\\\\006-add-login-home-buttons\\\\checklists\" \\| Out-Null$/": {
+            "approve": true,
+            "matchCommandLine": true
+        }
     }
 }
 

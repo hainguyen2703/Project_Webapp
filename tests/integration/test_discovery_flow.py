@@ -28,9 +28,9 @@ def test_homepage_displays_results(mock_fetch: Mock):
     mock_fetch.return_value = SAMPLE_RESULT
     client = app.test_client()
 
-    response = client.get("/?source=arxiv&fetch=1")
+    response = client.get("/?fetch=1")
     assert response.status_code == 200
-    assert b"Results from Arxiv" in response.data
+    assert b"Results from arXiv" in response.data
     assert b"Example Paper" in response.data
     assert b"View details" in response.data
 
@@ -39,10 +39,10 @@ def test_homepage_displays_results(mock_fetch: Mock):
 def test_detail_view_shows_source_link(mock_fetch: Mock):
     mock_fetch.return_value = SAMPLE_RESULT
     client = app.test_client()
-    client.get("/?source=arxiv&fetch=1")
+    client.get("/?fetch=1")
 
     response = client.get(
-        "/detail/http://arxiv.org/abs/1234.5678v1?source=arxiv",
+        "/detail/http://arxiv.org/abs/1234.5678v1",
         follow_redirects=True,
     )
     assert response.status_code == 200
@@ -61,7 +61,7 @@ def test_error_state_shows_retry(mock_fetch: Mock):
     }
     client = app.test_client()
 
-    response = client.get("/?source=medium&fetch=1")
+    response = client.get("/?fetch=1")
     assert response.status_code == 200
     assert b"Medium is unavailable." in response.data
     assert b"Retry" in response.data

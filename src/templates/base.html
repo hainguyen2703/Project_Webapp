@@ -27,8 +27,17 @@
         <!-- T008: dropdown nav — hidden by default (.open class toggled by JS) -->
         <nav id="menu-dropdown" class="nav-dropdown" aria-label="Navigation">
           <ul class="nav-dropdown__list">
-            <!-- T011: Register link (US2) -->
-            <li class="nav-dropdown__item"><a href="/register">Register</a></li>
+            <li class="nav-dropdown__item"><a href="/">Home</a></li>
+            {% if logged_in %}
+              <li class="nav-dropdown__item">
+                <form method="post" action="/logout">
+                  <button type="submit" class="nav-logout-btn">Log out</button>
+                </form>
+              </li>
+            {% else %}
+              <li class="nav-dropdown__item"><a href="/register">Register</a></li>
+              <li class="nav-dropdown__item"><a href="/login">Login</a></li>
+            {% endif %}
           </ul>
         </nav>
       </header>

@@ -1,4 +1,4 @@
 <!-- SPECKIT START -->
-Plan: specs/004-replace-medium-academia/plan.md
-Spec: specs/004-replace-medium-academia/spec.md
+Plan: specs/006-add-login-home-buttons/plan.md
+Spec: specs/006-add-login-home-buttons/spec.md
 <!-- SPECKIT END -->

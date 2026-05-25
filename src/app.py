@@ -8,6 +8,7 @@ from flask_mail import Mail
 
 from src.models.user import db
 from src.services.discovery_service import fetch_items
+from src.services.login_service import login_user
 from src.services.registration_service import (
     register_user,
     resend_verification,
@@ -38,19 +39,14 @@ mail = Mail(app)
 with app.app_context():
     db.create_all()
 
-LATEST_RESULTS: dict[str, list[dict]] = {"arxiv": [], "academia": []}
-
-CONTENT_SOURCES = [
-    {"id": "arxiv", "name": "arXiv", "description": "Recent academic papers from arXiv."},
-    {"id": "academia", "name": "Academia.edu", "description": "Academic papers from Academia.edu."},
-]
+LATEST_RESULTS: dict[str, list[dict]] = {"arxiv": []}
 
 
 @app.route("/")
 def home() -> str:
-    selected_source = request.args.get("source", "arxiv")
+    selected_source = "arxiv"
     query = request.args.get("query", "")
-    context = {"sources": CONTENT_SOURCES, "selected_source": selected_source, "query": query}
+    context = {"selected_source": selected_source, "query": query}
     result = None
 
     if request.args.get("fetch"):
@@ -60,15 +56,13 @@ def home() -> str:
         else:
             LATEST_RESULTS[selected_source] = []
 
-    return render_template("home.html", result=result, **context)
+    return render_template("home.html", result=result, logged_in="user_id" in session, **context)
 
 
 @app.route("/api/listings")
 def api_listings():
-    source = request.args.get("source", "")
+    source = "arxiv"
     query = request.args.get("query")
-    if not source:
-        return jsonify({"source": "", "status": "error", "items": [], "error_message": "Missing source parameter.", "fetched_at": None}), 400
     result = fetch_items(source, query=query)
     if result["status"] == "error":
         return jsonify(result), 503
@@ -77,13 +71,13 @@ def api_listings():
 
 @app.route("/detail/<path:item_id>")
 def item_detail(item_id: str) -> str:
-    source = request.args.get("source", "arxiv")
+    source = "arxiv"
     items = LATEST_RESULTS.get(source, [])
     item = next((item for item in items if item.get("id") == item_id), None)
     if item is None:
         abort(404)
 
-    return render_template("detail.html", item=item, source=source)
+    return render_template("detail.html", item=item, source=source, logged_in="user_id" in session)
 
 
 # ── Registration routes ────────────────────────────────────────────────────────
@@ -96,7 +90,9 @@ def _mask_email(email: str) -> str:
 @app.route("/register", methods=["GET", "POST"])
 def register():
     if request.method == "GET":
-        return render_template("register.html", errors={}, form_values={})
+        if "user_id" in session:
+            return redirect(url_for("home"))
+        return render_template("register.html", errors={}, form_values={}, logged_in=False)
 
     email = request.form.get("email", "").strip().lower()
     password = request.form.get("password", "")
@@ -104,12 +100,12 @@ def register():
 
     errors = validate_registration_input(email, password, consent)
     if errors:
-        return render_template("register.html", errors=errors, form_values={"email": email}), 400
+        return render_template("register.html", errors=errors, form_values={"email": email}, logged_in=False), 400
 
     result, user, token = register_user(email, password, datetime.now(timezone.utc))
     if result == "duplicate":
         errors["email"] = "This email is already registered. Please sign in."
-        return render_template("register.html", errors=errors, form_values={"email": email}), 400
+        return render_template("register.html", errors=errors, form_values={"email": email}, logged_in=False), 400
 
     send_verification_email(user, token, mail)
 
@@ -128,6 +124,7 @@ def check_email():
         masked_email=session.get("masked_email", ""),
         next_resend_allowed_at=session.get("next_resend_allowed_at"),
         resend_message=request.args.get("msg"),
+        logged_in="user_id" in session,
     )
 
 
@@ -155,7 +152,30 @@ def resend_verification_route():
 @app.route("/verify/<token>")
 def verify(token: str):
     result = verify_account(token)
-    return render_template("verify_result.html", result=result)
+    return render_template("verify_result.html", result=result, logged_in="user_id" in session)
+
+
+# ── Auth routes ───────────────────────────────────────────────────────────────
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if "user_id" in session:
+        return redirect(url_for("home"))
+    if request.method == "GET":
+        return render_template("login.html", error=None, form_email="", logged_in=False)
+    email = request.form.get("email", "").strip()
+    password = request.form.get("password", "")
+    user_id, error = login_user(email, password)
+    if user_id is not None:
+        session["user_id"] = user_id
+        return redirect(url_for("home"))
+    return render_template("login.html", error=error, form_email=email, logged_in=False)
+
+
+@app.route("/logout", methods=["POST"])
+def logout():
+    session.pop("user_id", None)
+    return redirect(url_for("home"))
 
 
 if __name__ == "__main__":
