@@ -125,3 +125,120 @@ button:hover {
 .status-message p {
   margin: 0;
 }
+
+/* Hamburger menu */
+.nav-toggle {
+  display: none;
+}
+
+.hamburger-icon {
+  position: absolute;
+  top: 24px;
+  right: 24px;
+  font-size: 2rem;
+  cursor: pointer;
+  user-select: none;
+}
+
+.hamburger-nav {
+  display: none;
+  position: absolute;
+  top: 70px;
+  right: 24px;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  box-shadow: 0 2px 12px rgba(15, 23, 42, 0.12);
+  padding: 12px 0;
+  min-width: 150px;
+  z-index: 100;
+}
+
+.nav-toggle:checked ~ .hamburger-nav {
+  display: block;
+}
+
+.hamburger-nav a {
+  display: block;
+  padding: 10px 16px;
+  color: #1f2937;
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.hamburger-nav a:hover {
+  background: #f3f4f6;
+}
+
+/* Heart button */
+.favourite-toggle {
+  margin: 16px 0;
+}
+
+.heart-btn {
+  background: none;
+  border: none;
+  font-size: 2rem;
+  color: #dc2626;
+  cursor: pointer;
+  padding: 4px 12px;
+}
+
+.heart-btn:hover {
+  background: #fef2f2;
+  border-radius: 8px;
+}
+
+/* Favourites page */
+.result-item {
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 18px;
+  margin-bottom: 16px;
+  position: relative;
+}
+
+.result-item h3 {
+  margin: 0 0 10px;
+}
+
+.result-item h3 a {
+  color: #1f2937;
+  text-decoration: none;
+}
+
+.result-item h3 a:hover {
+  color: #2563eb;
+}
+
+.remove-favourite {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+}
+
+.remove-btn {
+  background: none;
+  border: 1px solid #e5e7eb;
+  color: #6b7280;
+  font-size: 1.5rem;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border-radius: 4px;
+  cursor: pointer;
+  line-height: 1;
+}
+
+.remove-btn:hover {
+  background: #fef2f2;
+  color: #dc2626;
+  border-color: #dc2626;
+}
+
+.empty-state {
+  text-align: center;
+  color: #6b7280;
+  padding: 40px 20px;
+  font-size: 1.1rem;
+}
