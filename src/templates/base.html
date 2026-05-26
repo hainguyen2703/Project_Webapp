@@ -11,7 +11,14 @@
       <header>
         <h1>Nhập môn công nghệ phần mềm</h1>
         <p>Khám phá các bài báo học thuật mới nhất từ arXiv.</p>
-        <a class="home-btn" href="{{ url_for('home', fetch=1) }}">Home</a>
+        <a class="home-btn" href="{{ url_for('home') }}">Home</a>
+        
+        <!-- Hamburger menu -->
+        <input type="checkbox" id="nav-toggle" class="nav-toggle" />
+        <label for="nav-toggle" class="hamburger-icon">☰</label>
+        <nav class="hamburger-nav">
+          <a href="{{ url_for('favourites_page') }}">Favourites</a>
+        </nav>
       </header>
       <main>
         {% block content %}{% endblock %}
