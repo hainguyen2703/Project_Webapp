@@ -22,8 +22,25 @@ header h1 {
 }
 
 header p {
-  margin: 8px 0 24px;
+  margin: 8px 0 12px;
   color: #4b5563;
+}
+
+.home-btn {
+  display: inline-block;
+  padding: 8px 16px;
+  background: #ffffff;
+  color: #2563eb;
+  border: 1px solid #2563eb;
+  border-radius: 8px;
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 0.95rem;
+  margin-bottom: 16px;
+}
+
+.home-btn:hover {
+  background: #eff6ff;
 }
 
 .search-panel,

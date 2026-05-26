@@ -3,13 +3,6 @@
 {% block content %}
   <section class="search-panel">
     <form method="get" action="/">
-      <label for="source">Source</label>
-      <select id="source" name="source">
-        {% for src in sources %}
-          <option value="{{ src.id }}" {% if src.id == selected_source %}selected{% endif %}>{{ src.name }}</option>
-        {% endfor %}
-      </select>
-
       <label for="query">Search term</label>
       <input id="query" name="query" type="text" value="{{ query }}" placeholder="Optional keyword" />
 
@@ -20,7 +13,7 @@
   {% if result %}
     {% if result.status == 'success' %}
       <section class="results">
-        <h2>Results from {{ selected_source | capitalize }}</h2>
+        <h2>Results from arXiv</h2>
         <div class="cards">
           {% for item in result['items'] %}
             <article class="card">
@@ -28,7 +21,7 @@
               <p class="meta">{{ item.source_label }} • {{ item.published_at[:10] }}</p>
               <p class="authors">{{ item.authors | join(', ') }}</p>
               <p class="summary">{{ item.summary }}</p>
-              <a class="detail-link" href="{{ url_for('item_detail', item_id=item.id, source=selected_source) }}">View details</a>
+              <a class="detail-link" href="{{ url_for('item_detail', item_id=item.id, source='arxiv') }}">View details</a>
             </article>
           {% endfor %}
         </div>
@@ -40,7 +33,7 @@
     {% else %}
       <section class="status-message error">
         <p>{{ result.error_message or 'Unable to load items from the selected source.' }}</p>
-        <a href="{{ url_for('home', source=selected_source, query=query, fetch=1) }}">Retry</a>
+        <a href="{{ url_for('home', query=query, fetch=1) }}">Retry</a>
       </section>
     {% endif %}
   {% endif %}
