@@ -3,14 +3,15 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Paper Discovery Website</title>
+    <title>Nhập môn công nghệ phần mềm</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
   </head>
   <body>
     <div class="app-shell">
       <header>
-        <h1>Paper Discovery</h1>
-        <p>Choose a source and discover papers or articles from arXiv and Medium.</p>
+        <h1>Nhập môn công nghệ phần mềm</h1>
+        <p>Khám phá các bài báo học thuật mới nhất từ arXiv.</p>
+        <a class="home-btn" href="{{ url_for('home', fetch=1) }}">Home</a>
       </header>
       <main>
         {% block content %}{% endblock %}

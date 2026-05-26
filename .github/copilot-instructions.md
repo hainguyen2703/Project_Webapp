@@ -1,4 +1,4 @@
 <!-- SPECKIT START -->
-Plan: specs/001-paper-discovery-site/plan.md
-Spec: specs/001-paper-discovery-site/spec.md
+Plan: specs/003-arxiv-only-source/plan.md
+Spec: specs/003-arxiv-only-source/spec.md
 <!-- SPECKIT END -->
