@@ -40,10 +40,10 @@ def fetch_arxiv_articles(limit: int = 10, query: Optional[str] = None) -> List[P
     if cache_key in CACHE:
         return CACHE[cache_key]
 
-    # 2) Không cho phép gọi API quá 1 lần mỗi 10 giây
+    # 2) Không cho phép gọi API quá 1 lần mỗi 10 giây (chỉ áp dụng khi cache miss)
     now = time.time()
     if now - LAST_FETCH_TIME < 10:
-        return CACHE.get(cache_key, [])
+        return []
 
     LAST_FETCH_TIME = now
 
