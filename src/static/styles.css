@@ -43,6 +43,24 @@ header p {
   background: #eff6ff;
 }
 
+.clear-btn {
+  display: inline-block;
+  padding: 8px 16px;
+  background: #ffffff;
+  color: #dc2626;
+  border: 1px solid #dc2626;
+  border-radius: 8px;
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 0.95rem;
+  margin-bottom: 16px;
+  margin-left: 8px;
+}
+
+.clear-btn:hover {
+  background: #fef2f2;
+}
+
 .search-panel,
 .status-message,
 .detail-panel,
