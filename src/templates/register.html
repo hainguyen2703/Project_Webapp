@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+
+{% block content %}
+  <section class="register-panel">
+    <h2>Create account</h2>
+    <p class="register-intro">Register with your email and password.</p>
+
+    {% if errors.get('form') %}
+      <div class="status-message error">
+        <p>{{ errors.get('form') }}</p>
+      </div>
+    {% endif %}
+
+    <form method="post" action="{{ url_for('register_submit') }}" class="register-form" novalidate>
+      <input type="hidden" name="submission_token" value="{{ submission_token }}" />
+
+      <label for="email">Email</label>
+      <input id="email" name="email" type="email" value="{{ form_data.get('email', '') }}" required />
+      {% if errors.get('email') %}
+        <p class="field-error">{{ errors.get('email') }}</p>
+      {% endif %}
+
+      <label for="password">Password</label>
+      <input id="password" name="password" type="password" required />
+      <p class="field-hint">Minimum 8 characters with at least 1 letter and 1 number.</p>
+      {% if errors.get('password') %}
+        <p class="field-error">{{ errors.get('password') }}</p>
+      {% endif %}
+
+      <button type="submit">Create account</button>
+    </form>
+  </section>
+{% endblock %}

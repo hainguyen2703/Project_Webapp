@@ -4,20 +4,36 @@ import os
 import secrets
 
 from flask import Flask, abort, jsonify, redirect, render_template, request, session, url_for
+from src.services.db import init_db
 from src.services.discovery_service import fetch_items
+from src.services.registration_service import generate_submission_token, register_user
 
 app = Flask(__name__, template_folder="templates", static_folder="static")
 app.secret_key = os.environ.get("SECRET_KEY", "dev-only-insecure-key-change-in-prod")
+app.config.setdefault("REGISTRATION_DB_PATH", None)
 
 LATEST_RESULTS: dict[str, list[dict]] = {"arxiv": []}
 FAVOURITES_STORE: dict[str, list[dict]] = {}
+
+init_db(app.config.get("REGISTRATION_DB_PATH"))
+
+
+def _registration_db_path() -> str | None:
+    return app.config.get("REGISTRATION_DB_PATH")
+
+
+def _ensure_registration_session_key() -> str:
+    if "registration_session_key" not in session:
+        session["registration_session_key"] = secrets.token_urlsafe(24)
+    return session["registration_session_key"]
 
 
 @app.route("/")
 def home() -> str:
     selected_source = "arxiv"
     query = request.args.get("query", "")
-    context = {"query": query}
+    registered = request.args.get("registered") == "1"
+    context = {"query": query, "registered": registered}
     result = None
 
     if request.args.get("fetch"):
@@ -28,6 +44,47 @@ def home() -> str:
             LATEST_RESULTS["arxiv"] = []
 
     return render_template("home.html", result=result, **context)
+
+
+@app.route("/register")
+def register_page() -> str:
+    _ensure_registration_session_key()
+    return render_template(
+        "register.html",
+        form_data={"email": ""},
+        errors={},
+        submission_token=generate_submission_token(),
+    )
+
+
+@app.route("/register", methods=["POST"])
+def register_submit():
+    session_key = _ensure_registration_session_key()
+    email = request.form.get("email", "")
+    password = request.form.get("password", "")
+    submission_token = request.form.get("submission_token", "")
+
+    result = register_user(
+        email=email,
+        password=password,
+        session_key=session_key,
+        submission_token=submission_token,
+        db_path=_registration_db_path(),
+    )
+
+    if result.success:
+        return redirect(url_for("home", registered=1))
+
+    status_code = 409 if result.code == "duplicate_submission" else 200
+    return (
+        render_template(
+            "register.html",
+            form_data={"email": email},
+            errors=result.errors,
+            submission_token=generate_submission_token(),
+        ),
+        status_code,
+    )
 
 
 @app.route("/api/listings")

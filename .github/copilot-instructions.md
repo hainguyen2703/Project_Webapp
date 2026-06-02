@@ -1,4 +1,4 @@
 <!-- SPECKIT START -->
-Plan: specs/004-hamburger-favourites/plan.md
-Spec: specs/004-hamburger-favourites/spec.md
+Plan: specs/005-user-registration/plan.md
+Spec: specs/005-user-registration/spec.md
 <!-- SPECKIT END -->

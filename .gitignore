@@ -19,6 +19,7 @@ htmlcov/
 # Env / secrets
 .env
 .env.*
+*.log
 
 # IDE
 .vscode/
