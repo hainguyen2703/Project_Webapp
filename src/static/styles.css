@@ -140,8 +140,46 @@ button:hover {
   border-left: 4px solid #dc2626;
 }
 
+.status-message.success {
+  border-left: 4px solid #16a34a;
+}
+
 .status-message p {
   margin: 0;
+}
+
+.register-panel {
+  background: #ffffff;
+  border-radius: 12px;
+  box-shadow: 0 1px 8px rgba(15, 23, 42, 0.08);
+  padding: 20px;
+  margin-bottom: 20px;
+}
+
+.register-panel h2 {
+  margin-top: 0;
+}
+
+.register-intro {
+  color: #4b5563;
+}
+
+.register-form {
+  display: grid;
+  gap: 12px;
+}
+
+.field-hint {
+  margin: 0;
+  color: #6b7280;
+  font-size: 0.9rem;
+}
+
+.field-error {
+  margin: 0;
+  color: #b91c1c;
+  font-size: 0.9rem;
+  font-weight: 600;
 }
 
 /* Hamburger menu */

@@ -1,6 +1,12 @@
 {% extends "base.html" %}
 
 {% block content %}
+  {% if registered %}
+    <section class="status-message success">
+      <p>Registration completed. Your account is now active.</p>
+    </section>
+  {% endif %}
+
   <section class="search-panel">
     <form method="get" action="/">
       <label for="query">Search term</label>
