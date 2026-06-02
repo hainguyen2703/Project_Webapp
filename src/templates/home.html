@@ -7,6 +7,18 @@
     </section>
   {% endif %}
 
+  {% if logged_in %}
+    <section class="status-message success">
+      <p>Login successful. You are now signed in.</p>
+    </section>
+  {% endif %}
+
+  {% if logged_out %}
+    <section class="status-message success">
+      <p>Logged out!</p>
+    </section>
+  {% endif %}
+
   <section class="search-panel">
     <form method="get" action="/">
       <label for="query">Search term</label>

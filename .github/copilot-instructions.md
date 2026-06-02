@@ -1,4 +1,4 @@
 <!-- SPECKIT START -->
-Plan: specs/005-user-registration/plan.md
-Spec: specs/005-user-registration/spec.md
+Plan: specs/006-user-login-out/plan.md
+Spec: specs/006-user-login-out/spec.md
 <!-- SPECKIT END -->
