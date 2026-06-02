@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+
+{% block content %}
+  <section class="login-panel">
+    <h2>Login</h2>
+    <p class="login-intro">Sign in with your registered email and password.</p>
+
+    {% if message %}
+      <section class="status-message {{ message.kind }}">
+        <p>{{ message.text }}</p>
+      </section>
+    {% endif %}
+
+    {% if errors.get('form') %}
+      <section class="status-message error">
+        <p>{{ errors.get('form') }}</p>
+      </section>
+    {% endif %}
+
+    <form method="post" action="{{ url_for('login_submit') }}" class="login-form" novalidate>
+      <label for="email">Email</label>
+      <input id="email" name="email" type="email" value="{{ form_data.get('email', '') }}" required />
+      {% if errors.get('email') %}
+        <p class="field-error">{{ errors.get('email') }}</p>
+      {% endif %}
+
+      <label for="password">Password</label>
+      <input id="password" name="password" type="password" required />
+      {% if errors.get('password') %}
+        <p class="field-error">{{ errors.get('password') }}</p>
+      {% endif %}
+
+      <button type="submit">Sign in</button>
+    </form>
+  </section>
+{% endblock %}

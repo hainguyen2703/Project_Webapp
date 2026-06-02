@@ -61,6 +61,54 @@ header p {
   background: #fef2f2;
 }
 
+.auth-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: 12px;
+}
+
+.auth-badge {
+  display: inline-block;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: #eef2ff;
+  color: #3730a3;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.login-btn,
+.logout-btn {
+  display: inline-block;
+  padding: 8px 14px;
+  border-radius: 8px;
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.login-btn {
+  background: #ffffff;
+  color: #1d4ed8;
+  border: 1px solid #1d4ed8;
+}
+
+.logout-btn {
+  background: #ffffff;
+  color: #dc2626;
+  border: 1px solid #dc2626;
+}
+
+.logout-btn:hover,
+.login-btn:hover {
+  background: #f8fafc;
+}
+
+.logout-form {
+  display: inline;
+}
+
 .search-panel,
 .status-message,
 .detail-panel,
@@ -154,6 +202,27 @@ button:hover {
   box-shadow: 0 1px 8px rgba(15, 23, 42, 0.08);
   padding: 20px;
   margin-bottom: 20px;
+}
+
+.login-panel {
+  background: #ffffff;
+  border-radius: 12px;
+  box-shadow: 0 1px 8px rgba(15, 23, 42, 0.08);
+  padding: 20px;
+  margin-bottom: 20px;
+}
+
+.login-panel h2 {
+  margin-top: 0;
+}
+
+.login-intro {
+  color: #4b5563;
+}
+
+.login-form {
+  display: grid;
+  gap: 12px;
 }
 
 .register-panel h2 {
