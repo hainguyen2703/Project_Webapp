@@ -7,7 +7,7 @@ SAMPLE_RESULT = {
     "status": "success",
     "items": [
         {
-            "id": "http://arxiv.org/abs/1234.5678v1",
+            "id": "1234.5678v1",
             "source": "arxiv",
             "title": "Example Paper",
             "authors": ["Jane Doe"],
@@ -42,7 +42,7 @@ def test_detail_view_shows_source_link(mock_fetch: Mock):
     client.get("/?source=arxiv&fetch=1")
 
     response = client.get(
-        "/detail/http://arxiv.org/abs/1234.5678v1?source=arxiv",
+        "/detail/1234.5678v1?source=arxiv",
         follow_redirects=True,
     )
     assert response.status_code == 200
@@ -80,7 +80,7 @@ def test_home_button_visible(mock_fetch: Mock):
     # Seed LATEST_RESULTS so the detail page can find the item
     client.get("/?fetch=1")
     detail_response = client.get(
-        "/detail/http://arxiv.org/abs/1234.5678v1?source=arxiv",
+        "/detail/1234.5678v1?source=arxiv",
         follow_redirects=True,
     )
     assert detail_response.status_code == 200
@@ -96,7 +96,7 @@ def test_heart_button_visible_on_detail_page(mock_fetch: Mock):
     # Seed LATEST_RESULTS
     client.get("/?fetch=1")
     
-    response = client.get("/detail/http://arxiv.org/abs/1234.5678v1?source=arxiv")
+    response = client.get("/detail/1234.5678v1?source=arxiv")
     assert response.status_code == 200
     # Unfilled heart (not favourited)
     assert b"\xe2\x99\xa1" in response.data  # ♡
@@ -114,7 +114,7 @@ def test_heart_toggle_adds_to_favourites(mock_fetch: Mock):
     # Toggle favourite (add)
     response = client.post(
         "/favourite/toggle",
-        data={"item_id": "http://arxiv.org/abs/1234.5678v1"},
+        data={"item_id": "1234.5678v1"},
         follow_redirects=True,
     )
     assert response.status_code == 200
@@ -134,14 +134,14 @@ def test_heart_toggle_removes_from_favourites(mock_fetch: Mock):
     # Toggle favourite (add)
     client.post(
         "/favourite/toggle",
-        data={"item_id": "http://arxiv.org/abs/1234.5678v1"},
+        data={"item_id": "1234.5678v1"},
         follow_redirects=True,
     )
     
     # Toggle favourite (remove)
     response = client.post(
         "/favourite/toggle",
-        data={"item_id": "http://arxiv.org/abs/1234.5678v1"},
+        data={"item_id": "1234.5678v1"},
         follow_redirects=True,
     )
     assert response.status_code == 200
@@ -161,12 +161,12 @@ def test_favourite_persists_across_page_loads(mock_fetch: Mock):
     # Add to favourites
     client.post(
         "/favourite/toggle",
-        data={"item_id": "http://arxiv.org/abs/1234.5678v1"},
+        data={"item_id": "1234.5678v1"},
         follow_redirects=True,
     )
     
     # Load detail page again
-    response = client.get("/detail/http://arxiv.org/abs/1234.5678v1?source=arxiv")
+    response = client.get("/detail/1234.5678v1?source=arxiv")
     assert response.status_code == 200
     # Still favourited
     assert b"\xe2\x99\xa5" in response.data  # ♥
@@ -183,7 +183,7 @@ def test_hamburger_menu_visible(mock_fetch: Mock):
     assert b"\xe2\x98\xb0" in home_response.data  # ☰
     
     # Detail page
-    detail_response = client.get("/detail/http://arxiv.org/abs/1234.5678v1?source=arxiv")
+    detail_response = client.get("/detail/1234.5678v1?source=arxiv")
     assert b"\xe2\x98\xb0" in detail_response.data  # ☰
     
     # Favourites page
@@ -203,7 +203,7 @@ def test_favourites_page_shows_saved_papers(mock_fetch: Mock):
     # Add to favourites
     client.post(
         "/favourite/toggle",
-        data={"item_id": "http://arxiv.org/abs/1234.5678v1"},
+        data={"item_id": "1234.5678v1"},
         follow_redirects=True,
     )
     
@@ -227,14 +227,14 @@ def test_remove_button_on_favourites_page(mock_fetch: Mock):
     # Add to favourites
     client.post(
         "/favourite/toggle",
-        data={"item_id": "http://arxiv.org/abs/1234.5678v1"},
+        data={"item_id": "1234.5678v1"},
         follow_redirects=True,
     )
     
     # Remove from favourites
     response = client.post(
         "/favourite/remove",
-        data={"item_id": "http://arxiv.org/abs/1234.5678v1"},
+        data={"item_id": "1234.5678v1"},
         follow_redirects=True,
     )
     assert response.status_code == 200
@@ -265,7 +265,7 @@ def test_detail_view_from_favourites_fallback(mock_fetch: Mock):
     # Add to favourites
     client.post(
         "/favourite/toggle",
-        data={"item_id": "http://arxiv.org/abs/1234.5678v1"},
+        data={"item_id": "1234.5678v1"},
         follow_redirects=True,
     )
     
@@ -280,7 +280,7 @@ def test_detail_view_from_favourites_fallback(mock_fetch: Mock):
     client.get("/?query=differentquery&fetch=1")
     
     # Access detail page from favourites (should still work via fallback)
-    response = client.get("/detail/http://arxiv.org/abs/1234.5678v1")
+    response = client.get("/detail/1234.5678v1")
     assert response.status_code == 200
     assert b"Example Paper" in response.data
     assert b"Jane Doe" in response.data

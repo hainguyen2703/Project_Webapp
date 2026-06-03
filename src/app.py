@@ -5,6 +5,7 @@ import secrets
 
 from flask_login import LoginManager, current_user, login_user, logout_user
 from flask import Flask, abort, jsonify, redirect, render_template, request, session, url_for
+from src.clients.arxiv_client import extract_arxiv_id
 from src.models.auth_user import AuthUser
 from src.services.auth_service import authenticate_user, issue_session_expiry, session_is_expired
 from src.services.db import bump_session_version, get_user_by_id, init_db
@@ -36,6 +37,13 @@ def _ensure_registration_session_key() -> str:
     if "registration_session_key" not in session:
         session["registration_session_key"] = secrets.token_urlsafe(24)
     return session["registration_session_key"]
+
+
+def _normalize_item_id(raw_id: str) -> str:
+    normalized = extract_arxiv_id(raw_id)
+    if normalized:
+        return normalized
+    return raw_id
 
 
 def _refresh_expired_auth_session() -> None:
@@ -208,28 +216,29 @@ def api_listings():
 
 @app.route("/detail/<path:item_id>")
 def item_detail(item_id: str) -> str:
+    normalized_item_id = _normalize_item_id(item_id)
     source = request.args.get("source", "arxiv")
     items = LATEST_RESULTS.get(source, [])
-    item = next((item for item in items if item.get("id") == item_id), None)
+    item = next((item for item in items if _normalize_item_id(str(item.get("id", ""))) == normalized_item_id), None)
     
     # Fallback to favourites if not in latest results
     if item is None:
         user_id = session.get("user_id", "")
-        item = next((i for i in FAVOURITES_STORE.get(user_id, []) if i.get("id") == item_id), None)
+        item = next((i for i in FAVOURITES_STORE.get(user_id, []) if _normalize_item_id(str(i.get("id", ""))) == normalized_item_id), None)
     
     if item is None:
         abort(404)
     
     # Check if paper is favourited
     user_id = session.get("user_id", "")
-    is_favourite = any(f.get("id") == item_id for f in FAVOURITES_STORE.get(user_id, []))
+    is_favourite = any(_normalize_item_id(str(f.get("id", ""))) == normalized_item_id for f in FAVOURITES_STORE.get(user_id, []))
 
     return render_template("detail.html", item=item, source=source, is_favourite=is_favourite)
 
 
 @app.route("/favourite/toggle", methods=["POST"])
 def favourite_toggle():
-    item_id = request.form.get("item_id")
+    item_id = _normalize_item_id(request.form.get("item_id", ""))
     if not item_id:
         return redirect(url_for("home"))
     
@@ -245,14 +254,14 @@ def favourite_toggle():
     
     # Check if already favourited
     favourites = FAVOURITES_STORE[user_id]
-    existing_index = next((i for i, f in enumerate(favourites) if f.get("id") == item_id), None)
+    existing_index = next((i for i, f in enumerate(favourites) if _normalize_item_id(str(f.get("id", ""))) == item_id), None)
     
     if existing_index is not None:
         # Remove from favourites
         favourites.pop(existing_index)
     else:
         # Add to favourites - find paper in latest results
-        paper = next((p for p in LATEST_RESULTS.get("arxiv", []) if p.get("id") == item_id), None)
+        paper = next((p for p in LATEST_RESULTS.get("arxiv", []) if _normalize_item_id(str(p.get("id", ""))) == item_id), None)
         if paper:
             # Prepend to maintain reverse chronological order
             favourites.insert(0, paper)

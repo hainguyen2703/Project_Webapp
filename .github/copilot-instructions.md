@@ -1,4 +1,4 @@
 <!-- SPECKIT START -->
-Plan: specs/006-user-login-out/plan.md
-Spec: specs/006-user-login-out/spec.md
+Plan: specs/007-rework-arxiv-lib/plan.md
+Spec: specs/007-rework-arxiv-lib/spec.md
 <!-- SPECKIT END -->

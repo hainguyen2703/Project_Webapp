@@ -5,8 +5,12 @@
     <article>
       <h2>{{ item.title }}</h2>
       <p class="meta">{{ item.source_label }} • {{ item.published_at[:10] }}</p>
+      <p class="meta">Canonical ID: {{ item.id }}</p>
       <p class="authors">Authors: {{ item.authors | join(', ') }}</p>
       <p class="summary">{{ item.summary }}</p>
+      <p class="meta">
+        Primary category: {{ item.metadata.primary_category if item.metadata and item.metadata.primary_category else 'Unavailable' }}
+      </p>
       <p class="source-link">
         <a href="{{ item.url }}" target="_blank" rel="noopener">Open original source</a>
       </p>
