@@ -2,13 +2,23 @@ from __future__ import annotations
 
 import os
 import secrets
+from typing import Any
 
 from flask_login import LoginManager, current_user, login_user, logout_user
 from flask import Flask, abort, jsonify, redirect, render_template, request, session, url_for
 from src.clients.arxiv_client import extract_arxiv_id
 from src.models.auth_user import AuthUser
 from src.services.auth_service import authenticate_user, issue_session_expiry, session_is_expired
-from src.services.db import bump_session_version, get_user_by_id, init_db
+from src.services.db import (
+    add_favourite,
+    bump_session_version,
+    favourite_exists,
+    get_favourite,
+    get_user_by_id,
+    init_db,
+    list_favourites,
+    remove_favourite,
+)
 from src.services.discovery_service import fetch_items
 from src.services.registration_service import generate_submission_token, register_user
 
@@ -18,7 +28,6 @@ app.config.setdefault("REGISTRATION_DB_PATH", None)
 app.config.setdefault("AUTH_DB_PATH", None)
 
 LATEST_RESULTS: dict[str, list[dict]] = {"arxiv": []}
-FAVOURITES_STORE: dict[str, list[dict]] = {}
 
 login_manager = LoginManager(app)
 
@@ -44,6 +53,31 @@ def _normalize_item_id(raw_id: str) -> str:
     if normalized:
         return normalized
     return raw_id
+
+
+def _current_user_id() -> int | None:
+    if not current_user.is_authenticated:
+        return None
+    user_id = current_user.get_id()
+    if not user_id:
+        return None
+    return int(user_id)
+
+
+def _canonical_source_and_id(source: str, item_id: str) -> tuple[str, str]:
+    canonical_source = (source or "arxiv").strip().lower() or "arxiv"
+    return canonical_source, _normalize_item_id(item_id)
+
+
+def _find_paper_in_latest_results(source: str, external_paper_id: str) -> dict[str, Any] | None:
+    for paper in LATEST_RESULTS.get(source, []):
+        if _normalize_item_id(str(paper.get("id", ""))) != external_paper_id:
+            continue
+        hydrated = dict(paper)
+        hydrated["id"] = external_paper_id
+        hydrated["source"] = source
+        return hydrated
+    return None
 
 
 def _refresh_expired_auth_session() -> None:
@@ -216,82 +250,118 @@ def api_listings():
 
 @app.route("/detail/<path:item_id>")
 def item_detail(item_id: str) -> str:
-    normalized_item_id = _normalize_item_id(item_id)
-    source = request.args.get("source", "arxiv")
+    source, normalized_item_id = _canonical_source_and_id(
+        request.args.get("source", "arxiv"),
+        item_id,
+    )
     items = LATEST_RESULTS.get(source, [])
     item = next((item for item in items if _normalize_item_id(str(item.get("id", ""))) == normalized_item_id), None)
-    
+
     # Fallback to favourites if not in latest results
-    if item is None:
-        user_id = session.get("user_id", "")
-        item = next((i for i in FAVOURITES_STORE.get(user_id, []) if _normalize_item_id(str(i.get("id", ""))) == normalized_item_id), None)
-    
+    user_id = _current_user_id()
+    if item is None and user_id is not None:
+        item = get_favourite(
+            user_id=user_id,
+            source=source,
+            external_paper_id=normalized_item_id,
+            db_path=_auth_db_path(),
+        )
+
     if item is None:
         abort(404)
-    
+
+    item = dict(item)
+    item["id"] = normalized_item_id
+    item["source"] = source
+
     # Check if paper is favourited
-    user_id = session.get("user_id", "")
-    is_favourite = any(_normalize_item_id(str(f.get("id", ""))) == normalized_item_id for f in FAVOURITES_STORE.get(user_id, []))
+    is_favourite = False
+    if user_id is not None:
+        is_favourite = favourite_exists(
+            user_id=user_id,
+            source=source,
+            external_paper_id=normalized_item_id,
+            db_path=_auth_db_path(),
+        )
 
     return render_template("detail.html", item=item, source=source, is_favourite=is_favourite)
 
 
 @app.route("/favourite/toggle", methods=["POST"])
 def favourite_toggle():
-    item_id = _normalize_item_id(request.form.get("item_id", ""))
+    if not current_user.is_authenticated:
+        abort(404)
+
+    source, item_id = _canonical_source_and_id(
+        request.form.get("source", "arxiv"),
+        request.form.get("item_id", ""),
+    )
     if not item_id:
         return redirect(url_for("home"))
-    
-    # Ensure user has a session ID
-    if "user_id" not in session:
-        session["user_id"] = secrets.token_urlsafe(32)
-    
-    user_id = session["user_id"]
-    
-    # Initialize user's favourites list if needed
-    if user_id not in FAVOURITES_STORE:
-        FAVOURITES_STORE[user_id] = []
-    
-    # Check if already favourited
-    favourites = FAVOURITES_STORE[user_id]
-    existing_index = next((i for i, f in enumerate(favourites) if _normalize_item_id(str(f.get("id", ""))) == item_id), None)
-    
-    if existing_index is not None:
-        # Remove from favourites
-        favourites.pop(existing_index)
+
+    user_id = _current_user_id()
+    if user_id is None:
+        abort(404)
+
+    if favourite_exists(
+        user_id=user_id,
+        source=source,
+        external_paper_id=item_id,
+        db_path=_auth_db_path(),
+    ):
+        remove_favourite(
+            user_id=user_id,
+            source=source,
+            external_paper_id=item_id,
+            db_path=_auth_db_path(),
+        )
     else:
-        # Add to favourites - find paper in latest results
-        paper = next((p for p in LATEST_RESULTS.get("arxiv", []) if _normalize_item_id(str(p.get("id", ""))) == item_id), None)
+        paper = _find_paper_in_latest_results(source, item_id)
         if paper:
-            # Prepend to maintain reverse chronological order
-            favourites.insert(0, paper)
-    
-    return redirect(url_for("item_detail", item_id=item_id))
+            add_favourite(
+                user_id=user_id,
+                source=source,
+                external_paper_id=item_id,
+                paper=paper,
+                db_path=_auth_db_path(),
+            )
+
+    return redirect(url_for("item_detail", item_id=item_id, source=source))
 
 
 @app.route("/favourites")
 def favourites_page():
-    # Ensure user has a session ID
-    if "user_id" not in session:
-        session["user_id"] = secrets.token_urlsafe(32)
-    
-    user_id = session["user_id"]
-    favourites = FAVOURITES_STORE.get(user_id, [])
-    
+    user_id = _current_user_id()
+    if user_id is None:
+        abort(404)
+
+    favourites = list_favourites(user_id=user_id, db_path=_auth_db_path())
+
     return render_template("favourites.html", favourites=favourites)
 
 
 @app.route("/favourite/remove", methods=["POST"])
 def favourite_remove():
-    item_id = request.form.get("item_id")
-    
-    if item_id and "user_id" in session:
-        user_id = session["user_id"]
-        if user_id in FAVOURITES_STORE:
-            FAVOURITES_STORE[user_id] = [
-                f for f in FAVOURITES_STORE[user_id] if f.get("id") != item_id
-            ]
-    
+    if not current_user.is_authenticated:
+        abort(404)
+
+    source, item_id = _canonical_source_and_id(
+        request.form.get("source", "arxiv"),
+        request.form.get("item_id", ""),
+    )
+    user_id = _current_user_id()
+
+    if user_id is None:
+        abort(404)
+
+    if item_id:
+        remove_favourite(
+            user_id=user_id,
+            source=source,
+            external_paper_id=item_id,
+            db_path=_auth_db_path(),
+        )
+
     return redirect(url_for("favourites_page"))
 
 

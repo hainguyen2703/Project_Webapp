@@ -1,4 +1,4 @@
 <!-- SPECKIT START -->
-Plan: specs/007-rework-arxiv-lib/plan.md
-Spec: specs/007-rework-arxiv-lib/spec.md
+Plan: specs/008-user-owned-favourites/plan.md
+Spec: specs/008-user-owned-favourites/spec.md
 <!-- SPECKIT END -->

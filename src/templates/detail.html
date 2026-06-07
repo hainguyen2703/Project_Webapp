@@ -15,12 +15,17 @@
         <a href="{{ item.url }}" target="_blank" rel="noopener">Open original source</a>
       </p>
       <div class="favourite-toggle">
-        <form method="post" action="{{ url_for('favourite_toggle') }}">
-          <input type="hidden" name="item_id" value="{{ item.id }}">
-          <button type="submit" class="heart-btn" title="{% if is_favourite %}Remove from favourites{% else %}Add to favourites{% endif %}">
-            {% if is_favourite %}♥{% else %}♡{% endif %}
-          </button>
-        </form>
+        {% if current_user.is_authenticated %}
+          <form method="post" action="{{ url_for('favourite_toggle') }}">
+            <input type="hidden" name="item_id" value="{{ item.id }}">
+            <input type="hidden" name="source" value="{{ source }}">
+            <button type="submit" class="heart-btn" title="{% if is_favourite %}Remove from favourites{% else %}Add to favourites{% endif %}">
+              {% if is_favourite %}♥{% else %}♡{% endif %}
+            </button>
+          </form>
+        {% else %}
+          <p class="meta">Sign in to save this paper to favourites.</p>
+        {% endif %}
       </div>
     </article>
   </section>
