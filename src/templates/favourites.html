@@ -9,13 +9,14 @@
             {% for paper in favourites %}
                 <div class="result-item">
                     <h3>
-                        <a href="{{ url_for('item_detail', item_id=paper.id) }}">{{ paper.title }}</a>
+                        <a href="{{ url_for('item_detail', item_id=paper.id, source=paper.source) }}">{{ paper.title }}</a>
                     </h3>
                     <p class="authors">{{ paper.authors | join(', ') }}</p>
                     <p class="published">Published: {{ paper.published_at }}</p>
                     <div class="remove-favourite">
                         <form method="post" action="{{ url_for('favourite_remove') }}" style="display: inline;">
                             <input type="hidden" name="item_id" value="{{ paper.id }}">
+                            <input type="hidden" name="source" value="{{ paper.source }}">
                             <button type="submit" class="remove-btn" title="Remove from favourites">×</button>
                         </form>
                     </div>
