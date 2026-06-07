@@ -1,32 +1,40 @@
-from unittest.mock import Mock, patch
+from datetime import datetime, timezone
+from types import SimpleNamespace
 
 from src.clients import arxiv_client
 
-ARXIV_SAMPLE_XML = '''<?xml version="1.0" encoding="UTF-8"?>
-<feed xmlns="http://www.w3.org/2005/Atom" xmlns:arxiv="http://arxiv.org/schemas/atom">
-  <entry>
-    <id>http://arxiv.org/abs/1234.5678v1</id>
-    <title>Example Paper Title</title>
-    <summary>This is a sample abstract.</summary>
-    <published>2026-05-01T12:00:00Z</published>
-    <author><name>Jane Doe</name></author>
-    <arxiv:primary_category term="cs.AI" />
-  </entry>
-</feed>
-'''
+
+class _FakeClient:
+    def __init__(self, *_args, **_kwargs):
+        return
+
+    def results(self, _search):
+        entry = SimpleNamespace(
+            entry_id="http://arxiv.org/abs/1234.5678v1",
+            title="Example Paper Title",
+            summary="This is a sample abstract.",
+            authors=[SimpleNamespace(name="Jane Doe")],
+            published=datetime(2026, 5, 1, 12, 0, tzinfo=timezone.utc),
+            primary_category="cs.AI",
+            get_short_id=lambda: "1234.5678v1",
+        )
+        return [entry]
 
 
-@patch("src.clients.arxiv_client.requests.get")
-def test_fetch_arxiv_articles(mock_get: Mock):
-    mock_response = Mock()
-    mock_response.status_code = 200
-    mock_response.text = ARXIV_SAMPLE_XML
-    mock_get.return_value = mock_response
+def test_fetch_arxiv_articles(monkeypatch):
+    fake_arxiv_module = SimpleNamespace(
+        Search=lambda **_kwargs: object(),
+        Client=_FakeClient,
+        SortCriterion=SimpleNamespace(SubmittedDate="submitted"),
+        SortOrder=SimpleNamespace(Descending="descending"),
+    )
+    monkeypatch.setattr(arxiv_client, "arxiv", fake_arxiv_module)
 
-    results = arxiv_client.fetch_arxiv_articles(limit=1)
+    results = arxiv_client.fetch_arxiv_articles(limit=1, query="ai")
 
     assert len(results) == 1
-    assert results[0].id == "http://arxiv.org/abs/1234.5678v1"
+    assert results[0].id == "1234.5678v1"
     assert results[0].source == "arxiv"
     assert results[0].title == "Example Paper Title"
     assert results[0].authors == ["Jane Doe"]
+    assert results[0].url == "https://arxiv.org/abs/1234.5678v1"

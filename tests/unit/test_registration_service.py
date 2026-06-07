@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from src.services.db import init_db
+from src.services.db import add_favourite, delete_user_account, get_connection, init_db
 from src.services.registration_service import (
     IN_FLIGHT_SUBMISSIONS,
     RegistrationResult,
@@ -105,3 +105,42 @@ def test_register_user_rejects_duplicate_inflight_submission(db_path: Path) -> N
 
     assert blocked.success is False
     assert blocked.code == "duplicate_submission"
+
+
+def test_delete_user_account_cascades_favourites(db_path: Path) -> None:
+    registered = register_user(
+        email="cleanup@example.com",
+        password="abc12345",
+        session_key="session-e",
+        submission_token="token-e",
+        db_path=db_path,
+    )
+    assert registered.success is True
+    assert registered.user_id is not None
+
+    inserted = add_favourite(
+        user_id=int(registered.user_id),
+        source="arxiv",
+        external_paper_id="1234.5678v1",
+        paper={
+            "title": "Cleanup Paper",
+            "authors": ["Jane Doe"],
+            "summary": "summary",
+            "url": "https://arxiv.org/abs/1234.5678v1",
+            "published_at": "2026-05-01T12:00:00+00:00",
+            "source_label": "arXiv",
+        },
+        db_path=db_path,
+    )
+    assert inserted is True
+
+    removed_user = delete_user_account(user_id=int(registered.user_id), db_path=db_path)
+    assert removed_user is True
+
+    with get_connection(db_path) as connection:
+        favourite_count = connection.execute(
+            "SELECT COUNT(*) FROM favourite_items WHERE user_id = ?",
+            (int(registered.user_id),),
+        ).fetchone()[0]
+
+    assert favourite_count == 0

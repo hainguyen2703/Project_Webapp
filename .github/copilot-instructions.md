@@ -1,4 +1,4 @@
 <!-- SPECKIT START -->
-Plan: specs/006-user-login-out/plan.md
-Spec: specs/006-user-login-out/spec.md
+Plan: specs/008-user-owned-favourites/plan.md
+Spec: specs/008-user-owned-favourites/spec.md
 <!-- SPECKIT END -->

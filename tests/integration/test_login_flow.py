@@ -87,3 +87,20 @@ def test_logout_invalidates_user_version(client) -> None:
         ).fetchone()[0]
 
     assert after == before + 1
+
+
+def test_favourites_nav_hidden_when_logged_out(client) -> None:
+    flask_client, _ = client
+
+    response = flask_client.get("/?fetch=1")
+
+    assert response.status_code == 200
+    assert b"Favourites" not in response.data
+
+
+def test_favourites_route_not_found_when_logged_out(client) -> None:
+    flask_client, _ = client
+
+    response = flask_client.get("/favourites")
+
+    assert response.status_code == 404

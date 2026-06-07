@@ -1,123 +1,123 @@
 from __future__ import annotations
 
-import time
 import datetime
-import xml.etree.ElementTree as ET
+import re
+import time
 from typing import List, Optional
 
-import requests
+import arxiv
 
 from src.models.article import PaperArticle
 
+DEFAULT_QUERY = "cat:cs.AI"
+REQUEST_TIMEOUT_SECONDS = 30
+CACHE: dict[str, List[PaperArticle]] = {}
 
-ARXIV_API_URL = "https://export.arxiv.org/api/query"
-
-# Cache để tránh gọi API liên tục
-CACHE = {}
-LAST_FETCH_TIME = 0
-
-# User-Agent chuẩn để tránh bị arXiv chặn
-HEADERS = {
-    "User-Agent": "HariResearchBot/1.0 (mailto:nguyenngochai27031995@gmail.com)"
-}
+_ARXIV_ID_PATTERNS = [
+    re.compile(r"(\d{4}\.\d{4,5}(?:v\d+)?)$"),
+    re.compile(r"([a-z\-]+(?:\.[A-Z]{2})?/\d{7}(?:v\d+)?)$", re.IGNORECASE),
+]
 
 
-def _parse_iso(timestamp: str) -> str:
+def _parse_iso(timestamp: object) -> str:
+    if isinstance(timestamp, datetime.datetime):
+        if timestamp.tzinfo is None:
+            timestamp = timestamp.replace(tzinfo=datetime.timezone.utc)
+        return timestamp.astimezone(datetime.timezone.utc).isoformat()
+
+    if not isinstance(timestamp, str):
+        return datetime.datetime.now(datetime.timezone.utc).isoformat()
+
     try:
-        parsed = datetime.datetime.fromisoformat(timestamp)
+        parsed = datetime.datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=datetime.timezone.utc)
         return parsed.replace(tzinfo=datetime.timezone.utc).isoformat()
     except ValueError:
-        return timestamp
+        return datetime.datetime.now(datetime.timezone.utc).isoformat()
 
 
-def fetch_arxiv_articles(limit: int = 10, query: Optional[str] = None) -> List[PaperArticle]:
-    global LAST_FETCH_TIME
+def extract_arxiv_id(raw_id: str) -> Optional[str]:
+    if not raw_id:
+        return None
 
-    search_term = query or "cat:cs.AI"
-    cache_key = f"{search_term}:{limit}"
+    cleaned = raw_id.strip()
+    cleaned = cleaned.split("?")[0].rstrip("/")
 
-    # 1) Nếu đã có trong cache → trả về ngay
+    for pattern in _ARXIV_ID_PATTERNS:
+        match = pattern.search(cleaned)
+        if match:
+            return match.group(1)
+
+    return None
+
+
+def _build_canonical_url(arxiv_id: str) -> str:
+    return f"https://arxiv.org/abs/{arxiv_id}"
+
+
+def _build_query(query: Optional[str]) -> str:
+    if not query:
+        return DEFAULT_QUERY
+    normalized = query.strip()
+    if not normalized:
+        return DEFAULT_QUERY
+    return f"all:{normalized}"
+
+
+def fetch_arxiv_articles(limit: int = 10, query: Optional[str] = None, timeout_seconds: int = REQUEST_TIMEOUT_SECONDS) -> List[PaperArticle]:
+    if arxiv is None:
+        raise RuntimeError("Python package 'arxiv' is required for discovery retrieval.")
+
+    search_query = _build_query(query)
+    cache_key = f"{search_query}:{limit}"
+
     if cache_key in CACHE:
         return CACHE[cache_key]
 
-    # 2) Không cho phép gọi API quá 1 lần mỗi 10 giây (chỉ áp dụng khi cache miss)
-    now = time.time()
-    if now - LAST_FETCH_TIME < 10:
-        return []
-
-    LAST_FETCH_TIME = now
-
-    params = {
-        "search_query": f"all:{search_term}" if query else "cat:cs.AI",
-        "start": 0,
-        "max_results": limit,
-        "sortBy": "submittedDate",
-        "sortOrder": "descending",
-    }
-
-    # 3) Retry tối đa 3 lần (đủ để tránh bị chặn mà không spam)
-    for attempt in range(3):
-        try:
-            response = requests.get(
-                ARXIV_API_URL,
-                params=params,
-                timeout=30,          # timeout lớn để tránh lỗi read timed out
-                headers=HEADERS
-            )
-
-            # Nếu bị rate-limit → đợi 6 giây rồi thử lại
-            if response.status_code == 429:
-                time.sleep(6)
-                continue
-
-            response.raise_for_status()
-            break
-
-        except requests.exceptions.ReadTimeout:
-            # Nếu timeout → đợi 6 giây rồi thử lại
-            time.sleep(6)
-            continue
-
-    else:
-        # Nếu retry 3 lần vẫn fail → trả cache (nếu có) hoặc list rỗng
-        if cache_key in CACHE:
-            return CACHE[cache_key]
-        return []
-
-    # 4) Parse XML như code gốc của bạn
-    root = ET.fromstring(response.text)
-    entries = root.findall("{http://www.w3.org/2005/Atom}entry")
+    search = arxiv.Search(
+        query=search_query,
+        max_results=limit,
+        sort_by=arxiv.SortCriterion.SubmittedDate,
+        sort_order=arxiv.SortOrder.Descending,
+    )
+    client = arxiv.Client(page_size=min(limit, 100), delay_seconds=3.0, num_retries=5)
+    deadline = time.monotonic() + timeout_seconds
     results: List[PaperArticle] = []
 
-    for entry in entries:
-        entry_id = entry.findtext("{http://www.w3.org/2005/Atom}id", "")
-        title = (entry.findtext("{http://www.w3.org/2005/Atom}title") or "Untitled").strip()
-        authors = [
-            author.findtext("{http://www.w3.org/2005/Atom}name", "").strip()
-            for author in entry.findall("{http://www.w3.org/2005/Atom}author")
-            if author.find("{http://www.w3.org/2005/Atom}name") is not None
-        ]
-        summary = (entry.findtext("{http://www.w3.org/2005/Atom}summary") or "No summary available.").strip()
-        url = entry_id
-        published = entry.findtext("{http://www.w3.org/2005/Atom}published") or datetime.datetime.now(datetime.timezone.utc).isoformat()
+    for result in client.results(search):
+        if time.monotonic() > deadline:
+            raise TimeoutError("arXiv retrieval timed out.")
+
+        raw_id = getattr(result, "entry_id", "")
+        fallback_id = ""
+        get_short_id = getattr(result, "get_short_id", None)
+        if callable(get_short_id):
+            fallback_id = str(get_short_id())
+
+        arxiv_id = extract_arxiv_id(raw_id) or extract_arxiv_id(fallback_id) or ""
+        title = str(getattr(result, "title", "") or "").strip()
+        summary = str(getattr(result, "summary", "") or "").strip()
+        raw_authors = getattr(result, "authors", []) or []
+        authors = [str(getattr(author, "name", "") or "").strip() for author in raw_authors if str(getattr(author, "name", "") or "").strip()]
+        published = _parse_iso(getattr(result, "published", ""))
         fetched_at = datetime.datetime.now(datetime.timezone.utc).isoformat()
-        primary_category = entry.find("{http://arxiv.org/schemas/atom}primary_category")
+        primary_category = str(getattr(result, "primary_category", "") or "")
+        canonical_url = _build_canonical_url(arxiv_id) if arxiv_id else str(raw_id or "")
 
         article = PaperArticle(
-            id=entry_id,
+            id=arxiv_id,
             source="arxiv",
             title=title,
             authors=authors,
             summary=summary,
-            url=url,
-            published_at=_parse_iso(published),
+            url=canonical_url,
+            published_at=published,
             source_label="arXiv",
             fetched_at=fetched_at,
-            metadata={"primary_category": primary_category.get("term") if primary_category is not None else ""},
+            metadata={"primary_category": primary_category},
         )
         results.append(article)
 
-    # 5) Lưu vào cache
     CACHE[cache_key] = results
-
     return results
