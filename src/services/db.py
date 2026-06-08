@@ -17,7 +17,19 @@ INTEREST_CATALOG: list[dict[str, Any]] = [
     {"key": "cs.ro", "label": "Robotics", "is_default": 0, "sort_order": 60},
     {"key": "cs.se", "label": "Software Engineering", "is_default": 0, "sort_order": 70},
     {"key": "cs.db", "label": "Databases", "is_default": 0, "sort_order": 80},
+    {"key": "cs.dc", "label": "Distributed, Parallel, and Cluster Computing", "is_default": 0, "sort_order": 90},
+    {"key": "cs.cy", "label": "Cryptography and Security", "is_default": 0, "sort_order": 100},
+    {"key": "cs.lo", "label": "Logic in Computer Science", "is_default": 0, "sort_order": 110},
+    {"key": "cs.ma", "label": "Multiagent Systems", "is_default": 0, "sort_order": 120},
+    {"key": "cs.ne", "label": "Neural and Evolutionary Computing", "is_default": 0, "sort_order": 130},
+    {"key": "cs.ni", "label": "Networking and Internet Architecture", "is_default": 0, "sort_order": 140},
+    {"key": "cs.os", "label": "Operating Systems", "is_default": 0, "sort_order": 150},
+    {"key": "cs.pl", "label": "Programming Languages", "is_default": 0, "sort_order": 160},
+    {"key": "cs.sd", "label": "Sound", "is_default": 0, "sort_order": 170},
+    {"key": "cs.si", "label": "Social and Information Networks", "is_default": 0, "sort_order": 180},
+    {"key": "cs.sy", "label": "Systems and Control", "is_default": 0, "sort_order": 190},
 ]
+
 
 
 def get_connection(db_path: Optional[Union[str, Path]] = None) -> sqlite3.Connection:
