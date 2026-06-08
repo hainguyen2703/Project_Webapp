@@ -16,11 +16,6 @@
         <div class="auth-actions">
           {% if current_user.is_authenticated %}
             <span class="auth-badge">Signed in as {{ current_user.email }}</span>
-            <form method="post" action="{{ url_for('logout_submit') }}" class="logout-form">
-              <button type="submit" class="logout-btn">Logout</button>
-            </form>
-          {% else %}
-            <a class="login-btn" href="{{ url_for('login_page') }}">Login</a>
           {% endif %}
         </div>
         
@@ -31,6 +26,9 @@
           {% if current_user.is_authenticated %}
             <a href="{{ url_for('interests_page') }}">Interests</a>
             <a href="{{ url_for('favourites_page') }}">Favourites</a>
+            <form method="post" action="{{ url_for('logout_submit') }}" class="logout-form">
+              <button type="submit" class="logout-btn">Logout</button>
+            </form>
           {% else %}
             <a href="{{ url_for('login_page') }}">Login</a>
             <a href="{{ url_for('register_page') }}">Register</a>
