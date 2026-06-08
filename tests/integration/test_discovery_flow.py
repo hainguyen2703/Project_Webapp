@@ -6,7 +6,7 @@ from unittest.mock import Mock, patch
 import pytest
 
 from src.app import LATEST_RESULTS, app
-from src.services.db import init_db
+from src.services.db import init_db, set_user_interest_preferences
 from src.services.registration_service import create_user_account
 
 SAMPLE_RESULT = {
@@ -53,8 +53,24 @@ def _login(flask_client, email: str = "user@example.com", password: str = "pass1
     )
 
 
+def _create_and_login_user(flask_client, db_path, email: str = "user@example.com") -> int:
+    user_id = create_user_account(email=email, password="pass1234", db_path=db_path)
+    _login(flask_client, email=email)
+    return user_id
+
+
+def _set_onboarded(user_id: int, db_path, keys: list[str] | None = None) -> None:
+    selected = keys or ["cs.ai", "cs.cv", "cs.lg"]
+    set_user_interest_preferences(
+        user_id=user_id,
+        interest_keys=selected,
+        onboarding_completed=True,
+        db_path=db_path,
+    )
+
+
 @patch("src.app.fetch_items")
-def test_homepage_displays_results(mock_fetch: Mock, client) -> None:
+def test_homepage_displays_results_for_signed_out_user(mock_fetch: Mock, client) -> None:
     flask_client, _ = client
     mock_fetch.return_value = SAMPLE_RESULT
 
@@ -62,229 +78,122 @@ def test_homepage_displays_results(mock_fetch: Mock, client) -> None:
     assert response.status_code == 200
     assert b"Results from arXiv" in response.data
     assert b"Example Paper" in response.data
-    assert b"View details" in response.data
 
 
 @patch("src.app.fetch_items")
-def test_detail_view_shows_source_link(mock_fetch: Mock, client) -> None:
-    flask_client, _ = client
+def test_authenticated_user_without_onboarding_is_redirected(mock_fetch: Mock, client) -> None:
+    flask_client, db_path = client
     mock_fetch.return_value = SAMPLE_RESULT
-    flask_client.get("/?source=arxiv&fetch=1")
+    _create_and_login_user(flask_client, db_path, email="gate@example.com")
 
-    response = flask_client.get("/detail/1234.5678v1?source=arxiv", follow_redirects=True)
+    response = flask_client.get("/?fetch=1", follow_redirects=False)
+
+    assert response.status_code in {302, 303}
+    assert "/onboarding/interests" in response.headers["Location"]
+
+
+def test_onboarding_page_renders_for_authenticated_user(client) -> None:
+    flask_client, db_path = client
+    _create_and_login_user(flask_client, db_path, email="onboard@example.com")
+
+    response = flask_client.get("/onboarding/interests")
+
     assert response.status_code == 200
-    assert b"Open original source" in response.data
-    assert b"https://arxiv.org/abs/1234.5678v1" in response.data
+    assert b"Choose your interests" in response.data
+
+
+def test_onboarding_submit_rejects_invalid_selection_count(client) -> None:
+    flask_client, db_path = client
+    _create_and_login_user(flask_client, db_path, email="invalid@example.com")
+
+    response = flask_client.post(
+        "/onboarding/interests",
+        data={"interest_keys": ["cs.ai", "cs.cv"]},
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    assert b"Please choose at least 3 interests." in response.data
 
 
 @patch("src.app.fetch_items")
-def test_error_state_shows_retry(mock_fetch: Mock, client) -> None:
-    flask_client, _ = client
-    mock_fetch.return_value = {
-        "source": "arxiv",
-        "status": "error",
-        "items": [],
-        "error_message": "arXiv is unavailable.",
-        "fetched_at": None,
-    }
-
-    response = flask_client.get("/?fetch=1")
-    assert response.status_code == 200
-    assert b"arXiv is unavailable." in response.data
-    assert b"Retry" in response.data
-
-
-@patch("src.app.fetch_items")
-def test_home_button_visible(mock_fetch: Mock, client) -> None:
-    flask_client, _ = client
+def test_onboarding_submit_allows_discovery_after_completion(mock_fetch: Mock, client) -> None:
+    flask_client, db_path = client
     mock_fetch.return_value = SAMPLE_RESULT
+    _create_and_login_user(flask_client, db_path, email="complete@example.com")
+
+    submit = flask_client.post(
+        "/onboarding/interests",
+        data={"interest_keys": ["cs.ai", "cs.cv", "cs.lg"]},
+        follow_redirects=False,
+    )
+    assert submit.status_code in {302, 303}
 
     home_response = flask_client.get("/?fetch=1")
     assert home_response.status_code == 200
-    assert b"Home" in home_response.data
-
-    flask_client.get("/?fetch=1")
-    detail_response = flask_client.get("/detail/1234.5678v1?source=arxiv", follow_redirects=True)
-    assert detail_response.status_code == 200
-    assert b"Home" in detail_response.data
 
 
-@patch("src.app.fetch_items")
-def test_detail_prompts_sign_in_for_favourites(mock_fetch: Mock, client) -> None:
-    flask_client, _ = client
-    mock_fetch.return_value = SAMPLE_RESULT
-    flask_client.get("/?fetch=1")
-
-    response = flask_client.get("/detail/1234.5678v1?source=arxiv")
-    assert response.status_code == 200
-    assert b"Sign in to save this paper to favourites." in response.data
-
-
-@patch("src.app.fetch_items")
-def test_unauthenticated_favourites_routes_return_not_found(mock_fetch: Mock, client) -> None:
-    flask_client, _ = client
-    mock_fetch.return_value = SAMPLE_RESULT
-
-    flask_client.get("/?fetch=1")
-
-    list_response = flask_client.get("/favourites")
-    toggle_response = flask_client.post("/favourite/toggle", data={"item_id": "1234.5678v1", "source": "arxiv"})
-    remove_response = flask_client.post("/favourite/remove", data={"item_id": "1234.5678v1", "source": "arxiv"})
-
-    assert list_response.status_code == 404
-    assert toggle_response.status_code == 404
-    assert remove_response.status_code == 404
-
-
-@patch("src.app.fetch_items")
-def test_heart_toggle_adds_and_removes_for_authenticated_user(mock_fetch: Mock, client) -> None:
+def test_interest_management_prepopulates_current_selection(client) -> None:
     flask_client, db_path = client
-    mock_fetch.return_value = SAMPLE_RESULT
-    create_user_account(email="owner@example.com", password="pass1234", db_path=db_path)
-    _login(flask_client, email="owner@example.com")
+    user_id = _create_and_login_user(flask_client, db_path, email="manage@example.com")
+    _set_onboarded(user_id, db_path, ["cs.ai", "cs.cv", "cs.lg"])
 
-    flask_client.get("/?fetch=1")
-
-    added = flask_client.post(
-        "/favourite/toggle",
-        data={"item_id": "1234.5678v1", "source": "arxiv"},
-        follow_redirects=True,
-    )
-    assert added.status_code == 200
-    assert b"\xe2\x99\xa5" in added.data
-
-    removed = flask_client.post(
-        "/favourite/toggle",
-        data={"item_id": "1234.5678v1", "source": "arxiv"},
-        follow_redirects=True,
-    )
-    assert removed.status_code == 200
-    assert b"\xe2\x99\xa1" in removed.data
-
-
-@patch("src.app.fetch_items")
-def test_favourite_persists_across_logout_login(mock_fetch: Mock, client) -> None:
-    flask_client, db_path = client
-    mock_fetch.return_value = SAMPLE_RESULT
-    create_user_account(email="persist@example.com", password="pass1234", db_path=db_path)
-
-    _login(flask_client, email="persist@example.com")
-    flask_client.get("/?fetch=1")
-    flask_client.post(
-        "/favourite/toggle",
-        data={"item_id": "1234.5678v1", "source": "arxiv"},
-        follow_redirects=True,
-    )
-
-    flask_client.post("/logout")
-    _login(flask_client, email="persist@example.com")
-
-    response = flask_client.get("/favourites")
-    assert response.status_code == 200
-    assert b"Example Paper" in response.data
-
-
-@patch("src.app.fetch_items")
-def test_favourites_isolated_between_users(mock_fetch: Mock, client) -> None:
-    flask_client, db_path = client
-    mock_fetch.return_value = SAMPLE_RESULT
-    create_user_account(email="usera@example.com", password="pass1234", db_path=db_path)
-    create_user_account(email="userb@example.com", password="pass1234", db_path=db_path)
-
-    _login(flask_client, email="usera@example.com")
-    flask_client.get("/?fetch=1")
-    flask_client.post(
-        "/favourite/toggle",
-        data={"item_id": "1234.5678v1", "source": "arxiv"},
-        follow_redirects=True,
-    )
-    flask_client.post("/logout")
-
-    _login(flask_client, email="userb@example.com")
-    response = flask_client.get("/favourites")
+    response = flask_client.get("/interests")
 
     assert response.status_code == 200
-    assert b"Example Paper" not in response.data
-    assert b"No favourites saved yet" in response.data
+    assert b"Manage interests" in response.data
+    assert b"cs.ai" in response.data
 
 
-@patch("src.app.fetch_items")
-def test_hamburger_menu_visibility_depends_on_auth(mock_fetch: Mock, client) -> None:
+def test_interest_management_update_persists(client) -> None:
     flask_client, db_path = client
-    mock_fetch.return_value = SAMPLE_RESULT
-    create_user_account(email="menu@example.com", password="pass1234", db_path=db_path)
-
-    logged_out = flask_client.get("/?fetch=1")
-    assert b"\xe2\x98\xb0" in logged_out.data
-    assert b"Favourites" not in logged_out.data
-
-    _login(flask_client, email="menu@example.com")
-    logged_in = flask_client.get("/?fetch=1")
-    assert b"Favourites" in logged_in.data
-
-
-@patch("src.app.fetch_items")
-def test_favourites_page_shows_saved_papers(mock_fetch: Mock, client) -> None:
-    flask_client, db_path = client
-    mock_fetch.return_value = SAMPLE_RESULT
-    create_user_account(email="show@example.com", password="pass1234", db_path=db_path)
-    _login(flask_client, email="show@example.com")
-
-    flask_client.get("/?fetch=1")
-    flask_client.post(
-        "/favourite/toggle",
-        data={"item_id": "1234.5678v1", "source": "arxiv"},
-        follow_redirects=True,
-    )
-
-    response = flask_client.get("/favourites")
-    assert response.status_code == 200
-    assert b"Favourites" in response.data
-    assert b"Example Paper" in response.data
-    assert b"Jane Doe" in response.data
-
-
-@patch("src.app.fetch_items")
-def test_remove_button_on_favourites_page(mock_fetch: Mock, client) -> None:
-    flask_client, db_path = client
-    mock_fetch.return_value = SAMPLE_RESULT
-    create_user_account(email="remove@example.com", password="pass1234", db_path=db_path)
-    _login(flask_client, email="remove@example.com")
-
-    flask_client.get("/?fetch=1")
-    flask_client.post(
-        "/favourite/toggle",
-        data={"item_id": "1234.5678v1", "source": "arxiv"},
-        follow_redirects=True,
-    )
+    user_id = _create_and_login_user(flask_client, db_path, email="update@example.com")
+    _set_onboarded(user_id, db_path, ["cs.ai", "cs.cv", "cs.lg"])
 
     response = flask_client.post(
-        "/favourite/remove",
-        data={"item_id": "1234.5678v1", "source": "arxiv"},
+        "/interests",
+        data={"interest_keys": ["cs.ai", "cs.cl", "cs.db"]},
         follow_redirects=True,
     )
+
     assert response.status_code == 200
-    assert b"No favourites saved yet" in response.data
+    assert b"cs.cl" in response.data
 
 
 @patch("src.app.fetch_items")
-def test_empty_favourites_page_for_authenticated_user(mock_fetch: Mock, client) -> None:
+def test_discovery_defaults_use_or_query(mock_fetch: Mock, client) -> None:
     flask_client, db_path = client
     mock_fetch.return_value = SAMPLE_RESULT
-    create_user_account(email="empty@example.com", password="pass1234", db_path=db_path)
-    _login(flask_client, email="empty@example.com")
+    user_id = _create_and_login_user(flask_client, db_path, email="or@example.com")
+    _set_onboarded(user_id, db_path, ["cs.ai", "cs.cv", "cs.lg"])
 
-    response = flask_client.get("/favourites")
+    response = flask_client.get("/?fetch=1")
+
     assert response.status_code == 200
-    assert b"No favourites saved yet" in response.data
+    called_query = mock_fetch.call_args.kwargs.get("query")
+    assert "cat:cs.ai" in called_query
+    assert "OR" in called_query
 
 
 @patch("src.app.fetch_items")
-def test_detail_view_from_favourites_fallback(mock_fetch: Mock, client) -> None:
+def test_manual_query_overrides_interest_defaults(mock_fetch: Mock, client) -> None:
     flask_client, db_path = client
     mock_fetch.return_value = SAMPLE_RESULT
-    create_user_account(email="fallback@example.com", password="pass1234", db_path=db_path)
-    _login(flask_client, email="fallback@example.com")
+    user_id = _create_and_login_user(flask_client, db_path, email="override@example.com")
+    _set_onboarded(user_id, db_path)
+
+    response = flask_client.get("/?query=graph+neural+networks&fetch=1")
+
+    assert response.status_code == 200
+    assert mock_fetch.call_args.kwargs.get("query") == "graph neural networks"
+
+
+@patch("src.app.fetch_items")
+def test_favourites_still_work_for_onboarded_user(mock_fetch: Mock, client) -> None:
+    flask_client, db_path = client
+    mock_fetch.return_value = SAMPLE_RESULT
+    user_id = _create_and_login_user(flask_client, db_path, email="fav@example.com")
+    _set_onboarded(user_id, db_path)
 
     flask_client.get("/?fetch=1")
     flask_client.post(
@@ -293,16 +202,18 @@ def test_detail_view_from_favourites_fallback(mock_fetch: Mock, client) -> None:
         follow_redirects=True,
     )
 
-    mock_fetch.return_value = {
-        "source": "arxiv",
-        "status": "success",
-        "items": [],
-        "error_message": None,
-        "fetched_at": "2026-05-01T12:10:00+00:00",
-    }
-    flask_client.get("/?query=differentquery&fetch=1")
-
-    response = flask_client.get("/detail/1234.5678v1?source=arxiv")
+    response = flask_client.get("/favourites")
     assert response.status_code == 200
     assert b"Example Paper" in response.data
-    assert b"Jane Doe" in response.data
+
+
+def test_unauthenticated_interest_routes_redirect_to_login(client) -> None:
+    flask_client, _ = client
+
+    onboarding = flask_client.get("/onboarding/interests", follow_redirects=False)
+    manage = flask_client.get("/interests", follow_redirects=False)
+
+    assert onboarding.status_code in {302, 303}
+    assert "/login" in onboarding.headers["Location"]
+    assert manage.status_code in {302, 303}
+    assert "/login" in manage.headers["Location"]

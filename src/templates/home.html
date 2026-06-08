@@ -26,6 +26,10 @@
 
       <button type="submit" name="fetch" value="1">Fetch Listings</button>
     </form>
+
+    {% if used_default_interest_query and default_interest_keys %}
+      <p class="meta">Using interest defaults: {{ default_interest_keys | join(', ') }}</p>
+    {% endif %}
   </section>
 
   {% if result %}

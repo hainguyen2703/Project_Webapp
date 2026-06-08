@@ -29,6 +29,7 @@
         <label for="nav-toggle" class="hamburger-icon">☰</label>
         <nav class="hamburger-nav">
           {% if current_user.is_authenticated %}
+            <a href="{{ url_for('interests_page') }}">Interests</a>
             <a href="{{ url_for('favourites_page') }}">Favourites</a>
           {% else %}
             <a href="{{ url_for('login_page') }}">Login</a>

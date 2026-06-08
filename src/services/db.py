@@ -8,6 +8,17 @@ from typing import Any, Optional, Union
 
 DB_PATH = Path(__file__).resolve().parents[1] / "data" / "app.db"
 
+INTEREST_CATALOG: list[dict[str, Any]] = [
+    {"key": "cs.ai", "label": "Artificial Intelligence", "is_default": 1, "sort_order": 10},
+    {"key": "cs.cl", "label": "Computation and Language", "is_default": 1, "sort_order": 20},
+    {"key": "cs.cv", "label": "Computer Vision", "is_default": 1, "sort_order": 30},
+    {"key": "cs.lg", "label": "Machine Learning", "is_default": 1, "sort_order": 40},
+    {"key": "cs.ds", "label": "Data Structures and Algorithms", "is_default": 0, "sort_order": 50},
+    {"key": "cs.ro", "label": "Robotics", "is_default": 0, "sort_order": 60},
+    {"key": "cs.se", "label": "Software Engineering", "is_default": 0, "sort_order": 70},
+    {"key": "cs.db", "label": "Databases", "is_default": 0, "sort_order": 80},
+]
+
 
 def get_connection(db_path: Optional[Union[str, Path]] = None) -> sqlite3.Connection:
     path = Path(db_path) if db_path else DB_PATH
@@ -80,6 +91,78 @@ def init_db(db_path: Optional[Union[str, Path]] = None) -> None:
             CREATE INDEX IF NOT EXISTS ix_favourites_owner_created
             ON favourite_items(user_id, created_at DESC)
             """
+        )
+
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS interest_topics (
+                key TEXT PRIMARY KEY,
+                label TEXT NOT NULL UNIQUE,
+                is_active INTEGER NOT NULL DEFAULT 1,
+                is_default INTEGER NOT NULL DEFAULT 0,
+                sort_order INTEGER NOT NULL DEFAULT 0,
+                updated_at TEXT NOT NULL
+            )
+            """
+        )
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS user_interest_preferences (
+                user_id INTEGER PRIMARY KEY,
+                onboarding_completed INTEGER NOT NULL DEFAULT 0,
+                last_updated_at TEXT NOT NULL,
+                FOREIGN KEY(user_id) REFERENCES user_accounts(id) ON DELETE CASCADE
+            )
+            """
+        )
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS user_interest_selections (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                interest_key TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY(user_id) REFERENCES user_accounts(id) ON DELETE CASCADE,
+                FOREIGN KEY(interest_key) REFERENCES interest_topics(key)
+            )
+            """
+        )
+        connection.execute(
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS ux_user_interest_owner_key
+            ON user_interest_selections(user_id, interest_key)
+            """
+        )
+        connection.execute(
+            """
+            CREATE INDEX IF NOT EXISTS ix_user_interest_owner
+            ON user_interest_selections(user_id)
+            """
+        )
+
+        _seed_interest_catalog(connection)
+
+
+def _seed_interest_catalog(connection: sqlite3.Connection) -> None:
+    now = datetime.now(timezone.utc).isoformat()
+    for topic in INTEREST_CATALOG:
+        connection.execute(
+            """
+            INSERT INTO interest_topics (key, label, is_active, is_default, sort_order, updated_at)
+            VALUES (?, ?, 1, ?, ?, ?)
+            ON CONFLICT(key) DO UPDATE SET
+                label = excluded.label,
+                is_default = excluded.is_default,
+                sort_order = excluded.sort_order,
+                updated_at = excluded.updated_at
+            """,
+            (
+                topic["key"],
+                topic["label"],
+                int(topic["is_default"]),
+                int(topic["sort_order"]),
+                now,
+            ),
         )
 
 
@@ -303,3 +386,187 @@ def delete_user_account(
             (user_id,),
         )
     return cursor.rowcount > 0
+
+
+def list_interest_topics(
+    *,
+    active_only: bool = True,
+    db_path: Optional[Union[str, Path]] = None,
+) -> list[dict[str, Any]]:
+    query = """
+        SELECT key, label, is_active, is_default, sort_order
+        FROM interest_topics
+    """
+    params: tuple[Any, ...] = ()
+    if active_only:
+        query += " WHERE is_active = 1"
+    query += " ORDER BY sort_order ASC, label ASC"
+
+    with get_connection(db_path) as connection:
+        rows = connection.execute(query, params).fetchall()
+
+    return [
+        {
+            "key": row["key"],
+            "label": row["label"],
+            "is_active": bool(row["is_active"]),
+            "is_default": bool(row["is_default"]),
+            "sort_order": int(row["sort_order"]),
+        }
+        for row in rows
+    ]
+
+
+def list_default_interest_keys(
+    *,
+    db_path: Optional[Union[str, Path]] = None,
+) -> list[str]:
+    with get_connection(db_path) as connection:
+        rows = connection.execute(
+            """
+            SELECT key
+            FROM interest_topics
+            WHERE is_active = 1 AND is_default = 1
+            ORDER BY sort_order ASC, label ASC
+            """
+        ).fetchall()
+    return [str(row["key"]) for row in rows]
+
+
+def list_user_interest_keys(
+    *,
+    user_id: int,
+    active_only: bool = True,
+    db_path: Optional[Union[str, Path]] = None,
+) -> list[str]:
+    query = """
+        SELECT s.interest_key
+        FROM user_interest_selections s
+        JOIN interest_topics t ON t.key = s.interest_key
+        WHERE s.user_id = ?
+    """
+    params: list[Any] = [user_id]
+    if active_only:
+        query += " AND t.is_active = 1"
+    query += " ORDER BY t.sort_order ASC, t.label ASC"
+
+    with get_connection(db_path) as connection:
+        rows = connection.execute(query, tuple(params)).fetchall()
+    return [str(row["interest_key"]) for row in rows]
+
+
+def is_onboarding_completed(
+    *,
+    user_id: int,
+    db_path: Optional[Union[str, Path]] = None,
+) -> bool:
+    with get_connection(db_path) as connection:
+        row = connection.execute(
+            "SELECT onboarding_completed FROM user_interest_preferences WHERE user_id = ? LIMIT 1",
+            (user_id,),
+        ).fetchone()
+    if row is None:
+        return False
+    return bool(row["onboarding_completed"])
+
+
+def set_user_interest_preferences(
+    *,
+    user_id: int,
+    interest_keys: list[str],
+    onboarding_completed: bool,
+    db_path: Optional[Union[str, Path]] = None,
+) -> None:
+    timestamp = datetime.now(timezone.utc).isoformat()
+    deduped_keys = list(dict.fromkeys(interest_keys))
+
+    with get_connection(db_path) as connection:
+        connection.execute(
+            """
+            INSERT INTO user_interest_preferences (user_id, onboarding_completed, last_updated_at)
+            VALUES (?, ?, ?)
+            ON CONFLICT(user_id) DO UPDATE SET
+                onboarding_completed = excluded.onboarding_completed,
+                last_updated_at = excluded.last_updated_at
+            """,
+            (user_id, int(onboarding_completed), timestamp),
+        )
+        connection.execute("DELETE FROM user_interest_selections WHERE user_id = ?", (user_id,))
+        for key in deduped_keys:
+            connection.execute(
+                """
+                INSERT OR IGNORE INTO user_interest_selections (user_id, interest_key, created_at)
+                VALUES (?, ?, ?)
+                """,
+                (user_id, key, timestamp),
+            )
+
+
+def cleanup_retired_interests_for_user(
+    *,
+    user_id: int,
+    db_path: Optional[Union[str, Path]] = None,
+) -> int:
+    with get_connection(db_path) as connection:
+        cursor = connection.execute(
+            """
+            DELETE FROM user_interest_selections
+            WHERE user_id = ?
+              AND interest_key IN (
+                  SELECT key FROM interest_topics WHERE is_active = 0
+              )
+            """,
+            (user_id,),
+        )
+    return cursor.rowcount
+
+
+def autofill_default_interests_if_needed(
+    *,
+    user_id: int,
+    minimum_count: int,
+    db_path: Optional[Union[str, Path]] = None,
+) -> list[str]:
+    current = list_user_interest_keys(user_id=user_id, active_only=True, db_path=db_path)
+    if len(current) >= minimum_count:
+        return current
+
+    candidate_keys: list[str] = []
+    for key in list_default_interest_keys(db_path=db_path):
+        if key not in candidate_keys:
+            candidate_keys.append(key)
+    for topic in list_interest_topics(active_only=True, db_path=db_path):
+        key = str(topic["key"])
+        if key not in candidate_keys:
+            candidate_keys.append(key)
+
+    for key in candidate_keys:
+        if key in current:
+            continue
+        current.append(key)
+        if len(current) >= minimum_count:
+            break
+
+    set_user_interest_preferences(
+        user_id=user_id,
+        interest_keys=current,
+        onboarding_completed=True,
+        db_path=db_path,
+    )
+    return list_user_interest_keys(user_id=user_id, active_only=True, db_path=db_path)
+
+
+def reconcile_user_interests(
+    *,
+    user_id: int,
+    minimum_count: int,
+    db_path: Optional[Union[str, Path]] = None,
+) -> list[str]:
+    cleanup_retired_interests_for_user(user_id=user_id, db_path=db_path)
+    if not is_onboarding_completed(user_id=user_id, db_path=db_path):
+        return list_user_interest_keys(user_id=user_id, active_only=True, db_path=db_path)
+    return autofill_default_interests_if_needed(
+        user_id=user_id,
+        minimum_count=minimum_count,
+        db_path=db_path,
+    )
