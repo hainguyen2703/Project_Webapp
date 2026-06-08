@@ -12,7 +12,7 @@
   {% endif %}
 
   <form method="post" action="{{ url_for('interests_submit') }}">
-    <div class="cards">
+    <div class="cards interest-grid">
       {% for topic in topics %}
         <label class="card interest-option" for="manage-interest-{{ topic.key }}">
           <input

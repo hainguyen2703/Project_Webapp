@@ -110,7 +110,6 @@ def fetch_arxiv_articles(limit: int = 10, query: Optional[str] = None, timeout_s
         authors = [str(getattr(author, "name", "") or "").strip() for author in raw_authors if str(getattr(author, "name", "") or "").strip()]
         published = _parse_iso(getattr(result, "published", ""))
         fetched_at = datetime.datetime.now(datetime.timezone.utc).isoformat()
-        #primary_category = str(getattr(result, "primary_category", "") or "")
         primary_category = str(getattr(result, "primary_category", "") or "").lower()
         canonical_url = _build_canonical_url(arxiv_id) if arxiv_id else str(raw_id or "")
 

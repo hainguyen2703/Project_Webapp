@@ -383,6 +383,13 @@ button:hover {
   gap: 10px;
 }
 
+.interest-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px 20px;
+}
+
+
 /* Icon mặc định (dấu +) */
 .interest-option .icon {
   width: 20px;
