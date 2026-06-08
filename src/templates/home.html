@@ -23,8 +23,10 @@
     <form method="get" action="/">
       <label for="query">Search term</label>
       <input id="query" name="query" type="text" value="{{ query }}" placeholder="Optional keyword" />
-
-      <button type="submit" name="fetch" value="1">Fetch Listings</button>
+    <div class="search-actions">
+      <button type="submit" name="fetch" value="1">Search</button>
+      <a class="clear-btn" href="{{ url_for('home') }}">Clear</a>
+    </div>      
     </form>
   </section>
 

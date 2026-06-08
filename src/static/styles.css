@@ -55,6 +55,7 @@ header p {
   font-size: 0.95rem;
   margin-bottom: 16px;
   margin-left: 8px;
+  margin: 0 !important;
 }
 
 .clear-btn:hover {
@@ -431,4 +432,8 @@ button:hover {
 
 .hamburger-nav .logout-btn:hover {
   background: #fef2f2;
+}
+
+input:not([type="checkbox"]) {
+  box-sizing: border-box;
 }
