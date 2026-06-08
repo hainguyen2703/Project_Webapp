@@ -26,6 +26,8 @@ from src.services.db import (
 )
 from src.services.discovery_service import fetch_items
 from src.services.registration_service import generate_submission_token, register_user
+from src.services.db import get_interest_label
+
 
 app = Flask(__name__, template_folder="templates", static_folder="static")
 app.secret_key = os.environ.get("SECRET_KEY", "dev-only-insecure-key-change-in-prod")
@@ -451,6 +453,9 @@ def item_detail(item_id: str) -> str:
             external_paper_id=normalized_item_id,
             db_path=_auth_db_path(),
         )
+    
+    primary_category = item.get("metadata", {}).get("primary_category", "").lower()
+    item["primary_category_label"] = get_interest_label(primary_category)        
 
     return render_template("detail.html", item=item, source=source, is_favourite=is_favourite)
 

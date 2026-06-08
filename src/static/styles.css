@@ -129,7 +129,7 @@ label {
   font-weight: 600;
 }
 
-input,
+input:not([type="checkbox"]),
 select {
   width: 100%;
   padding: 10px 12px;
@@ -366,4 +366,48 @@ button:hover {
   color: #6b7280;
   padding: 40px 20px;
   font-size: 1.1rem;
+}
+
+/* --- Custom small checkbox icons for interest selection --- */
+
+/* Ẩn checkbox thật */
+.interest-checkbox {
+  display: none;
+}
+
+/* Layout của mỗi card */
+.interest-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* Icon mặc định (dấu +) */
+.interest-option .icon {
+  width: 20px;
+  height: 20px;
+  border: 2px solid #9ca3af; /* màu xám nhạt */
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  color: #6b7280;
+  font-size: 14px;
+  transition: all 0.15s ease;
+}
+
+.interest-option .icon::before {
+  content: "+";
+}
+
+/* Khi checkbox được chọn → đổi thành dấu ✓ */
+.interest-checkbox:checked + .icon {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: white;
+}
+
+.interest-checkbox:checked + .icon::before {
+  content: "✓";
 }

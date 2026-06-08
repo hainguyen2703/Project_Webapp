@@ -388,6 +388,14 @@ def delete_user_account(
     return cursor.rowcount > 0
 
 
+def get_interest_label(key: str) -> str:
+    key = key.lower()
+    for item in INTEREST_CATALOG:
+        if item["key"] == key:
+            return item["label"]
+    return key  # fallback
+
+
 def list_interest_topics(
     *,
     active_only: bool = True,
