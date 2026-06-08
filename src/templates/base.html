@@ -12,7 +12,6 @@
         <h1>Nhập môn công nghệ phần mềm</h1>
         <p>Khám phá các bài báo học thuật mới nhất từ arXiv.</p>
         <a class="home-btn" href="{{ url_for('home') }}">Home</a>
-        <a class="clear-btn" href="{{ url_for('home') }}">Clear</a>
         <div class="auth-actions">
           {% if current_user.is_authenticated %}
             <span class="auth-badge">Signed in as {{ current_user.email }}</span>
