@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="content">
+  <h2>Choose your interests</h2>
+  <p>Select between {{ min_interests }} and {{ max_interests }} interests to continue.</p>
+
+  {% if error_message %}
+    <section class="status-message error">
+      <p>{{ error_message }}</p>
+    </section>
+  {% endif %}
+
+  <form method="post" action="{{ url_for('onboarding_interests_submit') }}">
+    <div class="cards">
+      {% for topic in topics %}
+        <label class="card" for="interest-{{ topic.key }}">
+          <input
+            id="interest-{{ topic.key }}"
+            type="checkbox"
+            name="interest_keys"
+            value="{{ topic.key }}"
+            {% if topic.key in selected_keys %}checked{% endif %}
+          />
+          <strong>{{ topic.label }}</strong>
+          <p class="meta">{{ topic.key }}</p>
+        </label>
+      {% endfor %}
+    </div>
+
+    <button type="submit">Save and Continue</button>
+  </form>
+</section>
+{% endblock %}

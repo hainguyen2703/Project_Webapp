@@ -1,4 +1,4 @@
 <!-- SPECKIT START -->
-Plan: specs/008-user-owned-favourites/plan.md
-Spec: specs/008-user-owned-favourites/spec.md
+Plan: specs/009-build-user-interest-onboarding/plan.md
+Spec: specs/009-build-user-interest-onboarding/spec.md
 <!-- SPECKIT END -->

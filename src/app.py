@@ -16,8 +16,13 @@ from src.services.db import (
     get_favourite,
     get_user_by_id,
     init_db,
+    is_onboarding_completed,
+    list_interest_topics,
+    list_user_interest_keys,
     list_favourites,
+    reconcile_user_interests,
     remove_favourite,
+    set_user_interest_preferences,
 )
 from src.services.discovery_service import fetch_items
 from src.services.registration_service import generate_submission_token, register_user
@@ -28,6 +33,8 @@ app.config.setdefault("REGISTRATION_DB_PATH", None)
 app.config.setdefault("AUTH_DB_PATH", None)
 
 LATEST_RESULTS: dict[str, list[dict]] = {"arxiv": []}
+MIN_INTERESTS = 3
+MAX_INTERESTS = 10
 
 login_manager = LoginManager(app)
 
@@ -80,6 +87,35 @@ def _find_paper_in_latest_results(source: str, external_paper_id: str) -> dict[s
     return None
 
 
+def _discovery_routes() -> set[str]:
+    return {"home", "api_listings", "item_detail"}
+
+
+def _normalize_interest_keys(raw_keys: list[str]) -> list[str]:
+    return list(dict.fromkeys([key.strip().lower() for key in raw_keys if key.strip()]))
+
+
+def _active_interest_key_set() -> set[str]:
+    return {topic["key"] for topic in list_interest_topics(active_only=True, db_path=_auth_db_path())}
+
+
+def _validate_interest_selection(interest_keys: list[str]) -> tuple[bool, str | None]:
+    if len(interest_keys) < MIN_INTERESTS:
+        return False, f"Please choose at least {MIN_INTERESTS} interests."
+    if len(interest_keys) > MAX_INTERESTS:
+        return False, f"Please choose no more than {MAX_INTERESTS} interests."
+    if len(set(interest_keys)) != len(interest_keys):
+        return False, "Duplicate interests are not allowed."
+    active_keys = _active_interest_key_set()
+    if any(key not in active_keys for key in interest_keys):
+        return False, "One or more selected interests are invalid."
+    return True, None
+
+
+def _build_interest_default_query(interest_keys: list[str]) -> str:
+    return " OR ".join([f"cat:{key.upper()}" for key in interest_keys])
+
+
 def _refresh_expired_auth_session() -> None:
     if not current_user.is_authenticated:
         return
@@ -91,6 +127,15 @@ def _refresh_expired_auth_session() -> None:
 @app.before_request
 def refresh_auth_session_before_request() -> None:
     _refresh_expired_auth_session()
+    user_id = _current_user_id()
+    if user_id is None:
+        return
+
+    reconcile_user_interests(user_id=user_id, minimum_count=MIN_INTERESTS, db_path=_auth_db_path())
+
+    endpoint = request.endpoint or ""
+    if endpoint in _discovery_routes() and not is_onboarding_completed(user_id=user_id, db_path=_auth_db_path()):
+        return redirect(url_for("onboarding_interests_page"))
 
 
 @login_manager.user_loader
@@ -121,11 +166,22 @@ def home() -> str:
         "registered": registered,
         "logged_in": logged_in,
         "logged_out": logged_out,
+        "default_interest_keys": [],
+        "used_default_interest_query": False,
     }
     result = None
 
     if request.args.get("fetch"):
-        result = fetch_items(selected_source, query=query or None)
+        fetch_query = query or None
+        user_id = _current_user_id()
+        if user_id is not None and not fetch_query and is_onboarding_completed(user_id=user_id, db_path=_auth_db_path()):
+            interest_keys = list_user_interest_keys(user_id=user_id, active_only=True, db_path=_auth_db_path())
+            if interest_keys:
+                fetch_query = _build_interest_default_query(interest_keys)
+                context["default_interest_keys"] = interest_keys
+                context["used_default_interest_query"] = True
+
+        result = fetch_items(selected_source, query=fetch_query)
         if result["status"] == "success":
             LATEST_RESULTS["arxiv"] = result["items"]
         else:
@@ -242,10 +298,122 @@ def api_listings():
     query = request.args.get("query")
     if not source:
         return jsonify({"source": "", "status": "error", "items": [], "error_message": "Missing source parameter.", "fetched_at": None}), 400
-    result = fetch_items(source, query=query)
+    fetch_query = query
+    user_id = _current_user_id()
+    if user_id is not None and not fetch_query and is_onboarding_completed(user_id=user_id, db_path=_auth_db_path()):
+        interest_keys = list_user_interest_keys(user_id=user_id, active_only=True, db_path=_auth_db_path())
+        if interest_keys:
+            fetch_query = _build_interest_default_query(interest_keys)
+
+    result = fetch_items(source, query=fetch_query)
     if result["status"] == "error":
         return jsonify(result), 503
     return jsonify(result)
+
+
+@app.route("/onboarding/interests")
+def onboarding_interests_page() -> str:
+    if not current_user.is_authenticated:
+        return redirect(url_for("login_page"))
+
+    user_id = _current_user_id()
+    if user_id is None:
+        return redirect(url_for("login_page"))
+
+    if is_onboarding_completed(user_id=user_id, db_path=_auth_db_path()):
+        return redirect(url_for("home"))
+
+    topics = list_interest_topics(active_only=True, db_path=_auth_db_path())
+    selected_keys = list_user_interest_keys(user_id=user_id, active_only=True, db_path=_auth_db_path())
+    return render_template(
+        "onboarding_interests.html",
+        topics=topics,
+        selected_keys=selected_keys,
+        min_interests=MIN_INTERESTS,
+        max_interests=MAX_INTERESTS,
+        error_message=None,
+    )
+
+
+@app.route("/onboarding/interests", methods=["POST"])
+def onboarding_interests_submit() -> str:
+    if not current_user.is_authenticated:
+        return redirect(url_for("login_page"))
+
+    user_id = _current_user_id()
+    if user_id is None:
+        return redirect(url_for("login_page"))
+
+    selected = _normalize_interest_keys(request.form.getlist("interest_keys"))
+    valid, error = _validate_interest_selection(selected)
+    if not valid:
+        return render_template(
+            "onboarding_interests.html",
+            topics=list_interest_topics(active_only=True, db_path=_auth_db_path()),
+            selected_keys=selected,
+            min_interests=MIN_INTERESTS,
+            max_interests=MAX_INTERESTS,
+            error_message=error,
+        )
+
+    set_user_interest_preferences(
+        user_id=user_id,
+        interest_keys=selected,
+        onboarding_completed=True,
+        db_path=_auth_db_path(),
+    )
+    return redirect(url_for("home"))
+
+
+@app.route("/interests")
+def interests_page() -> str:
+    if not current_user.is_authenticated:
+        return redirect(url_for("login_page"))
+
+    user_id = _current_user_id()
+    if user_id is None:
+        return redirect(url_for("login_page"))
+    if not is_onboarding_completed(user_id=user_id, db_path=_auth_db_path()):
+        return redirect(url_for("onboarding_interests_page"))
+
+    return render_template(
+        "interests.html",
+        topics=list_interest_topics(active_only=True, db_path=_auth_db_path()),
+        selected_keys=list_user_interest_keys(user_id=user_id, active_only=True, db_path=_auth_db_path()),
+        min_interests=MIN_INTERESTS,
+        max_interests=MAX_INTERESTS,
+        error_message=None,
+    )
+
+
+@app.route("/interests", methods=["POST"])
+def interests_submit() -> str:
+    if not current_user.is_authenticated:
+        return redirect(url_for("login_page"))
+
+    user_id = _current_user_id()
+    if user_id is None:
+        return redirect(url_for("login_page"))
+
+    selected = _normalize_interest_keys(request.form.getlist("interest_keys"))
+    valid, error = _validate_interest_selection(selected)
+    if not valid:
+        return render_template(
+            "interests.html",
+            topics=list_interest_topics(active_only=True, db_path=_auth_db_path()),
+            selected_keys=selected,
+            min_interests=MIN_INTERESTS,
+            max_interests=MAX_INTERESTS,
+            error_message=error,
+        )
+
+    set_user_interest_preferences(
+        user_id=user_id,
+        interest_keys=selected,
+        onboarding_completed=True,
+        db_path=_auth_db_path(),
+    )
+    return redirect(url_for("interests_page"))
 
 
 @app.route("/detail/<path:item_id>")

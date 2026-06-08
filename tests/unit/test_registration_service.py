@@ -5,7 +5,13 @@ from pathlib import Path
 
 import pytest
 
-from src.services.db import add_favourite, delete_user_account, get_connection, init_db
+from src.services.db import (
+    add_favourite,
+    delete_user_account,
+    get_connection,
+    init_db,
+    set_user_interest_preferences,
+)
 from src.services.registration_service import (
     IN_FLIGHT_SUBMISSIONS,
     RegistrationResult,
@@ -134,6 +140,13 @@ def test_delete_user_account_cascades_favourites(db_path: Path) -> None:
     )
     assert inserted is True
 
+    set_user_interest_preferences(
+        user_id=int(registered.user_id),
+        interest_keys=["cs.ai", "cs.cv", "cs.lg"],
+        onboarding_completed=True,
+        db_path=db_path,
+    )
+
     removed_user = delete_user_account(user_id=int(registered.user_id), db_path=db_path)
     assert removed_user is True
 
@@ -142,5 +155,15 @@ def test_delete_user_account_cascades_favourites(db_path: Path) -> None:
             "SELECT COUNT(*) FROM favourite_items WHERE user_id = ?",
             (int(registered.user_id),),
         ).fetchone()[0]
+        preference_count = connection.execute(
+            "SELECT COUNT(*) FROM user_interest_preferences WHERE user_id = ?",
+            (int(registered.user_id),),
+        ).fetchone()[0]
+        selection_count = connection.execute(
+            "SELECT COUNT(*) FROM user_interest_selections WHERE user_id = ?",
+            (int(registered.user_id),),
+        ).fetchone()[0]
 
     assert favourite_count == 0
+    assert preference_count == 0
+    assert selection_count == 0

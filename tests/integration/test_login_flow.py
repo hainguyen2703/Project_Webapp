@@ -46,6 +46,22 @@ def test_successful_login_redirects_home(client) -> None:
     assert "/?logged_in=1" in response.headers["Location"]
 
 
+def test_home_redirects_to_onboarding_after_login_when_not_completed(client) -> None:
+    flask_client, db_path = client
+    create_user_account(email="gate-login@example.com", password="pass1234", db_path=db_path)
+
+    flask_client.post(
+        "/login",
+        data={"email": "gate-login@example.com", "password": "pass1234"},
+        follow_redirects=False,
+    )
+
+    response = flask_client.get("/", follow_redirects=False)
+
+    assert response.status_code in {302, 303}
+    assert "/onboarding/interests" in response.headers["Location"]
+
+
 def test_invalid_login_shows_error(client) -> None:
     flask_client, _ = client
     response = flask_client.post(

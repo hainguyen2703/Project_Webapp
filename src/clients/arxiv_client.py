@@ -59,10 +59,18 @@ def _build_canonical_url(arxiv_id: str) -> str:
 def _build_query(query: Optional[str]) -> str:
     if not query:
         return DEFAULT_QUERY
+
     normalized = query.strip()
     if not normalized:
         return DEFAULT_QUERY
+
+    # Nếu query đã có field prefix (cat:, ti:, au:, etc.) → giữ nguyên
+    if ":" in normalized:
+        return normalized
+
+    # Nếu chỉ là text search → thêm all:
     return f"all:{normalized}"
+
 
 
 def fetch_arxiv_articles(limit: int = 10, query: Optional[str] = None, timeout_seconds: int = REQUEST_TIMEOUT_SECONDS) -> List[PaperArticle]:
