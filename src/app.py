@@ -159,6 +159,8 @@ def _discovery_context(*, query: str, registered: bool, logged_in: bool, logged_
 
 
 def _execute_discovery_fetch(*, selected_source: str, query: str, context: dict[str, Any]) -> dict[str, Any] | None:
+    if context["search_action"] == url_for("home") and not query:
+        return None
     result = None
     if request.args.get("fetch"):
         fetch_query = query or None
