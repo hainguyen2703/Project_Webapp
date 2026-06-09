@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 from pathlib import Path
+from datetime import datetime, timezone
 from unittest.mock import Mock, patch
 
 import pytest
 
 from src.app import LATEST_RESULTS, app
+from src.models.article import PaperArticle
 from src.services.db import init_db, set_user_interest_preferences
 from src.services.registration_service import create_user_account
 
@@ -27,6 +29,9 @@ SAMPLE_RESULT = {
     ],
     "error_message": None,
     "fetched_at": "2026-05-01T12:10:00+00:00",
+    "active_interest_keys": [],
+    "backfill_applied": False,
+    "used_default_interest_query": False,
 }
 
 
@@ -86,10 +91,32 @@ def test_authenticated_user_without_onboarding_is_redirected(mock_fetch: Mock, c
     mock_fetch.return_value = SAMPLE_RESULT
     _create_and_login_user(flask_client, db_path, email="gate@example.com")
 
-    response = flask_client.get("/?fetch=1", follow_redirects=False)
+    response = flask_client.get("/discover?fetch=1", follow_redirects=False)
 
     assert response.status_code in {302, 303}
     assert "/onboarding/interests" in response.headers["Location"]
+
+
+def test_discover_requires_authentication(client) -> None:
+    flask_client, _ = client
+
+    response = flask_client.get("/discover", follow_redirects=False)
+
+    assert response.status_code in {302, 303}
+    assert "/login" in response.headers["Location"]
+
+
+@patch("src.app.fetch_items")
+def test_discover_renders_for_authenticated_onboarded_user(mock_fetch: Mock, client) -> None:
+    flask_client, db_path = client
+    mock_fetch.return_value = SAMPLE_RESULT
+    user_id = _create_and_login_user(flask_client, db_path, email="discover@example.com")
+    _set_onboarded(user_id, db_path)
+
+    response = flask_client.get("/discover?fetch=1")
+
+    assert response.status_code == 200
+    assert b"Results from arXiv" in response.data
 
 
 def test_onboarding_page_renders_for_authenticated_user(client) -> None:
@@ -170,9 +197,113 @@ def test_discovery_defaults_use_or_query(mock_fetch: Mock, client) -> None:
     response = flask_client.get("/?fetch=1")
 
     assert response.status_code == 200
-    called_query = mock_fetch.call_args.kwargs.get("query")
+    called_query = str(mock_fetch.call_args.kwargs.get("query", "")).lower()
     assert "cat:cs.ai" in called_query
-    assert "OR" in called_query
+    assert "or" in called_query
+
+
+@patch("src.app.fetch_items")
+def test_discovery_shows_active_interest_context(mock_fetch: Mock, client) -> None:
+    flask_client, db_path = client
+    result = dict(SAMPLE_RESULT)
+    result["used_default_interest_query"] = True
+    result["active_interest_keys"] = ["cs.ai", "cs.cv", "cs.lg"]
+    mock_fetch.return_value = result
+
+    user_id = _create_and_login_user(flask_client, db_path, email="visible@example.com")
+    _set_onboarded(user_id, db_path, ["cs.ai", "cs.cv", "cs.lg"])
+
+    response = flask_client.get("/?fetch=1")
+
+    assert response.status_code == 200
+    assert b"Discover defaults are using your interests." in response.data
+    assert b"Artificial Intelligence" in response.data
+
+
+@patch("src.app.fetch_items")
+def test_discovery_shows_sparse_backfill_guidance(mock_fetch: Mock, client) -> None:
+    flask_client, db_path = client
+    result = dict(SAMPLE_RESULT)
+    result["used_default_interest_query"] = True
+    result["active_interest_keys"] = ["cs.ai", "cs.cv", "cs.lg"]
+    result["backfill_applied"] = True
+    mock_fetch.return_value = result
+
+    user_id = _create_and_login_user(flask_client, db_path, email="backfill@example.com")
+    _set_onboarded(user_id, db_path, ["cs.ai", "cs.cv", "cs.lg"])
+
+    response = flask_client.get("/?fetch=1")
+
+    assert response.status_code == 200
+    assert b"Showing direct interest matches first" in response.data
+
+
+@patch("src.app.fetch_items")
+def test_home_and_discover_share_session_query_state(mock_fetch: Mock, client) -> None:
+    flask_client, db_path = client
+    mock_fetch.return_value = SAMPLE_RESULT
+    user_id = _create_and_login_user(flask_client, db_path, email="sync@example.com")
+    _set_onboarded(user_id, db_path)
+
+    flask_client.get("/?query=transformers&fetch=1")
+    flask_client.get("/discover?fetch=1")
+
+    second_query = str(mock_fetch.call_args.kwargs.get("query", "")).lower()
+    assert "transformers" in second_query
+
+
+def test_discovery_orders_direct_matches_before_backfill(monkeypatch, client) -> None:
+    flask_client, db_path = client
+    user_id = _create_and_login_user(flask_client, db_path, email="ranking@example.com")
+    _set_onboarded(user_id, db_path, ["cs.ai", "cs.cv", "cs.lg"])
+
+    def _fake_fetch_arxiv_articles(*_args, **_kwargs):
+        return [
+            PaperArticle(
+                id="1111.0001v1",
+                source="arxiv",
+                title="Older direct",
+                authors=["A"],
+                summary="S",
+                url="https://arxiv.org/abs/1111.0001v1",
+                published_at="2026-01-01T00:00:00+00:00",
+                source_label="arXiv",
+                fetched_at=datetime.now(timezone.utc).isoformat(),
+                metadata={"primary_category": "cs.ai", "categories": ["cs.ai"]},
+            ),
+            PaperArticle(
+                id="1111.0002v1",
+                source="arxiv",
+                title="New direct",
+                authors=["A"],
+                summary="S",
+                url="https://arxiv.org/abs/1111.0002v1",
+                published_at="2026-02-01T00:00:00+00:00",
+                source_label="arXiv",
+                fetched_at=datetime.now(timezone.utc).isoformat(),
+                metadata={"primary_category": "cs.lg", "categories": ["cs.lg"]},
+            ),
+            PaperArticle(
+                id="1111.0003v1",
+                source="arxiv",
+                title="Backfill",
+                authors=["A"],
+                summary="S",
+                url="https://arxiv.org/abs/1111.0003v1",
+                published_at="2026-03-01T00:00:00+00:00",
+                source_label="arXiv",
+                fetched_at=datetime.now(timezone.utc).isoformat(),
+                metadata={"primary_category": "math.oc", "categories": ["math.oc"]},
+            ),
+        ]
+
+    monkeypatch.setattr("src.services.discovery_service.fetch_arxiv_articles", _fake_fetch_arxiv_articles)
+
+    response = flask_client.get("/?fetch=1")
+
+    assert response.status_code == 200
+    assert LATEST_RESULTS["arxiv"][0]["id"] == "1111.0002v1"
+    assert LATEST_RESULTS["arxiv"][1]["id"] == "1111.0001v1"
 
 
 @patch("src.app.fetch_items")

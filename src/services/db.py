@@ -608,3 +608,27 @@ def reconcile_user_interests(
         minimum_count=minimum_count,
         db_path=db_path,
     )
+
+
+def load_effective_interest_context(
+    *,
+    user_id: int,
+    minimum_count: int,
+    db_path: Optional[Union[str, Path]] = None,
+) -> dict[str, Any]:
+    before_keys = list_user_interest_keys(user_id=user_id, active_only=False, db_path=db_path)
+    effective_keys = reconcile_user_interests(
+        user_id=user_id,
+        minimum_count=minimum_count,
+        db_path=db_path,
+    )
+    active_keys = set(list_user_interest_keys(user_id=user_id, active_only=True, db_path=db_path))
+    retired_keys = [key for key in before_keys if key not in active_keys]
+
+    return {
+        "user_id": user_id,
+        "effective_interest_keys": effective_keys,
+        "retired_interest_keys": retired_keys,
+        "minimum_required": minimum_count,
+        "last_reconciled_at": datetime.now(timezone.utc).isoformat(),
+    }

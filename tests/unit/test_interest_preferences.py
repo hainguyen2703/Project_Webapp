@@ -8,6 +8,7 @@ from src.services.db import (
     get_connection,
     init_db,
     is_onboarding_completed,
+    load_effective_interest_context,
     list_user_interest_keys,
     reconcile_user_interests,
     set_user_interest_preferences,
@@ -57,3 +58,20 @@ def test_reconcile_does_not_autofill_when_onboarding_incomplete(db_path: Path) -
     assert reconciled == list_user_interest_keys(user_id=user_id, active_only=True, db_path=db_path)
     assert len(reconciled) == 1
     assert is_onboarding_completed(user_id=user_id, db_path=db_path) is False
+
+
+def test_load_effective_interest_context_includes_required_fields(db_path: Path) -> None:
+    user_id = create_user_account(email="context@example.com", password="pass1234", db_path=db_path)
+    set_user_interest_preferences(
+        user_id=user_id,
+        interest_keys=["cs.ai", "cs.cv", "cs.lg"],
+        onboarding_completed=True,
+        db_path=db_path,
+    )
+
+    context = load_effective_interest_context(user_id=user_id, minimum_count=3, db_path=db_path)
+
+    assert context["user_id"] == user_id
+    assert context["minimum_required"] == 3
+    assert len(context["effective_interest_keys"]) >= 3
+    assert "last_reconciled_at" in context

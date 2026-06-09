@@ -111,6 +111,10 @@ def fetch_arxiv_articles(limit: int = 10, query: Optional[str] = None, timeout_s
         published = _parse_iso(getattr(result, "published", ""))
         fetched_at = datetime.datetime.now(datetime.timezone.utc).isoformat()
         primary_category = str(getattr(result, "primary_category", "") or "").lower()
+        raw_categories = getattr(result, "categories", []) or []
+        categories = [str(value or "").strip().lower() for value in raw_categories if str(value or "").strip()]
+        if primary_category and primary_category not in categories:
+            categories.insert(0, primary_category)
         canonical_url = _build_canonical_url(arxiv_id) if arxiv_id else str(raw_id or "")
 
         article = PaperArticle(
@@ -123,7 +127,7 @@ def fetch_arxiv_articles(limit: int = 10, query: Optional[str] = None, timeout_s
             published_at=published,
             source_label="arXiv",
             fetched_at=fetched_at,
-            metadata={"primary_category": primary_category},
+            metadata={"primary_category": primary_category, "categories": categories},
         )
         results.append(article)
 
