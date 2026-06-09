@@ -65,12 +65,21 @@
         </div>
         {% if result.pages > 1 %}
           <div class="pagination">
+            {# Nút Previous #}
             {% if result.page > 1 %}
               <a href="{{ search_action }}?query={{ query }}&fetch=1&page={{ result.page - 1 }}">Previous</a>
             {% endif %}
 
-            <span>Page {{ result.page }} / {{ result.pages }}</span>
-
+            {# Hiển thị danh sách số trang #}
+            {% for p in range(1, result.pages + 1) %}
+              {% if p == result.page %}
+                <span class="current">{{ p }}</span>
+              {% else %}
+                <a href="{{ search_action }}?query={{ query }}&fetch=1&page={{ p }}">{{ p }}</a>
+              {% endif %}
+            {% endfor %}            
+            
+            {# Nút Next #}
             {% if result.page < result.pages %}
               <a href="{{ search_action }}?query={{ query }}&fetch=1&page={{ result.page + 1 }}">Next</a>
             {% endif %}
