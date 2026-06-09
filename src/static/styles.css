@@ -444,3 +444,33 @@ button:hover {
 input:not([type="checkbox"]) {
   box-sizing: border-box;
 }
+
+.pagination {
+  margin-top: 24px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.pagination a,
+.pagination span {
+  padding: 6px 12px;
+  border-radius: 6px;
+  text-decoration: none;
+  font-weight: 600;
+  border: 1px solid #2563eb;
+  color: #2563eb;
+}
+
+.pagination a:hover {
+  background: #2563eb;
+  color: white;
+}
+
+.pagination .current {
+  background: #2563eb;
+  color: white;
+  pointer-events: none;
+}

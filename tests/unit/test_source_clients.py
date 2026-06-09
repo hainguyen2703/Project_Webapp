@@ -16,6 +16,7 @@ class _FakeClient:
             authors=[SimpleNamespace(name="Jane Doe")],
             published=datetime(2026, 5, 1, 12, 0, tzinfo=timezone.utc),
             primary_category="cs.AI",
+            categories=["cs.AI", "cs.LG"],
             get_short_id=lambda: "1234.5678v1",
         )
         return [entry]
@@ -38,3 +39,5 @@ def test_fetch_arxiv_articles(monkeypatch):
     assert results[0].title == "Example Paper Title"
     assert results[0].authors == ["Jane Doe"]
     assert results[0].url == "https://arxiv.org/abs/1234.5678v1"
+    assert results[0].metadata["primary_category"] == "cs.ai"
+    assert results[0].metadata["categories"] == ["cs.ai", "cs.lg"]

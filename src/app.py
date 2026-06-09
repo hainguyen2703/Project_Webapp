@@ -20,11 +20,12 @@ from src.services.db import (
     list_interest_topics,
     list_user_interest_keys,
     list_favourites,
+    load_effective_interest_context,
     reconcile_user_interests,
     remove_favourite,
     set_user_interest_preferences,
 )
-from src.services.discovery_service import fetch_items
+from src.services.discovery_service import ListingContextKeys, fetch_items
 from src.services.registration_service import generate_submission_token, register_user
 from src.services.db import get_interest_label
 
@@ -37,6 +38,8 @@ app.config.setdefault("AUTH_DB_PATH", None)
 LATEST_RESULTS: dict[str, list[dict]] = {"arxiv": []}
 MIN_INTERESTS = 3
 MAX_INTERESTS = 10
+MIN_DEFAULT_RESULTS = 50
+DISCOVERY_SESSION_QUERY_KEY = "discover_query"
 
 login_manager = LoginManager(app)
 
@@ -90,7 +93,7 @@ def _find_paper_in_latest_results(source: str, external_paper_id: str) -> dict[s
 
 
 def _discovery_routes() -> set[str]:
-    return {"home", "api_listings", "item_detail"}
+    return {"discover_page", "api_listings", "item_detail"}
 
 
 def _normalize_interest_keys(raw_keys: list[str]) -> list[str]:
@@ -118,6 +121,129 @@ def _build_interest_default_query(interest_keys: list[str]) -> str:
     return " OR ".join([f"cat:{key.upper()}" for key in interest_keys])
 
 
+def _build_active_interest_labels(interest_keys: list[str]) -> list[dict[str, str]]:
+    labels: list[dict[str, str]] = []
+    for key in interest_keys:
+        normalized_key = key.strip().lower()
+        if not normalized_key:
+            continue
+        labels.append({"key": normalized_key, "label": get_interest_label(normalized_key)})
+    return labels
+
+
+def _synchronized_query_value(default_query: str = "") -> str:
+    if "query" in request.args:
+        current = (request.args.get("query", "") or "").strip()
+        if current:
+            session[DISCOVERY_SESSION_QUERY_KEY] = current
+        else:
+            session.pop(DISCOVERY_SESSION_QUERY_KEY, None)
+        return current
+    return str(session.get(DISCOVERY_SESSION_QUERY_KEY, default_query))
+
+
+def _discovery_context(*, query: str, registered: bool, logged_in: bool, logged_out: bool, endpoint: str) -> dict[str, Any]:
+    return {
+        "query": query,
+        "registered": registered,
+        "logged_in": logged_in,
+        "logged_out": logged_out,
+        "default_interest_keys": [],
+        "active_interest_labels": [],
+        "used_default_interest_query": False,
+        "backfill_applied": False,
+        "show_sparse_guidance": False,
+        "search_action": url_for(endpoint),
+        "clear_url": url_for(endpoint, query=""),
+    }
+
+
+def _execute_discovery_fetch(*, selected_source: str, query: str, context: dict[str, Any]) -> dict[str, Any] | None:
+    if context["search_action"] == url_for("home") and not query:
+        return None
+    result = None
+    if request.args.get("fetch"):
+        fetch_query = query or None
+        user_id = _current_user_id()
+        interest_keys: list[str] = []
+        if user_id is not None and not fetch_query and is_onboarding_completed(user_id=user_id, db_path=_auth_db_path()):
+            effective_context = load_effective_interest_context(
+                user_id=user_id,
+                minimum_count=MIN_INTERESTS,
+                db_path=_auth_db_path(),
+            )
+            interest_keys = effective_context["effective_interest_keys"]
+            if interest_keys:
+                fetch_query = _build_interest_default_query(interest_keys)
+                context["default_interest_keys"] = interest_keys
+                context["active_interest_labels"] = _build_active_interest_labels(interest_keys)
+                context["used_default_interest_query"] = True
+
+        result = fetch_items(
+            selected_source,
+            query=fetch_query,
+            interest_keys=interest_keys,
+            minimum_result_count=MIN_DEFAULT_RESULTS,
+        )
+        context["used_default_interest_query"] = bool(
+            result.get(ListingContextKeys.USED_DEFAULT_INTEREST_QUERY, context["used_default_interest_query"])
+        )
+        context["backfill_applied"] = bool(result.get(ListingContextKeys.BACKFILL_APPLIED, False))
+        context["show_sparse_guidance"] = context["backfill_applied"] or result.get("status") == "empty"
+
+        if context["used_default_interest_query"]:
+            context["default_interest_keys"] = list(result.get(ListingContextKeys.ACTIVE_INTEREST_KEYS, context["default_interest_keys"]))
+            context["active_interest_labels"] = _build_active_interest_labels(context["default_interest_keys"])
+
+        if result["status"] == "success":
+            LATEST_RESULTS["arxiv"] = result["items"]
+        else:
+            LATEST_RESULTS["arxiv"] = []
+    return result
+
+
+def _render_discovery_view(*, template_name: str, endpoint: str, allow_banner_messages: bool) -> str:
+    selected_source = "arxiv"
+    query = _synchronized_query_value()
+    registered = allow_banner_messages and request.args.get("registered") == "1"
+    logged_in = allow_banner_messages and request.args.get("logged_in") == "1"
+    logged_out = allow_banner_messages and request.args.get("logged_out") == "1"
+
+    # Pagination params
+    page = int(request.args.get("page", 1))
+    per_page = 10  # bạn có thể đổi 20 → 30 → 50 tùy ý
+
+    context = _discovery_context(
+        query=query,
+        registered=registered,
+        logged_in=logged_in,
+        logged_out=logged_out,
+        endpoint=endpoint,
+    )
+
+    result = _execute_discovery_fetch(
+        selected_source=selected_source,
+        query=query,
+        context=context
+    )
+
+    # Nếu có kết quả → áp dụng pagination
+    if result and result.get("items"):
+        items = result["items"]
+        total = len(items)
+
+        start = (page - 1) * per_page
+        end = start + per_page
+
+        result["items"] = items[start:end]
+        result["page"] = page
+        result["per_page"] = per_page
+        result["total"] = total
+        result["pages"] = (total + per_page - 1) // per_page
+
+    return render_template(template_name, result=result, **context)
+
+
 def _refresh_expired_auth_session() -> None:
     if not current_user.is_authenticated:
         return
@@ -140,6 +266,18 @@ def refresh_auth_session_before_request() -> None:
         return redirect(url_for("onboarding_interests_page"))
 
 
+@app.context_processor
+def inject_active_route() -> dict[str, str]:
+    endpoint = request.endpoint or ""
+    if endpoint == "home":
+        active_page = "home"
+    elif endpoint == "discover_page":
+        active_page = "discover"
+    else:
+        active_page = ""
+    return {"active_page": active_page}
+
+
 @login_manager.user_loader
 def load_user(user_id: str) -> AuthUser | None:
     if not user_id:
@@ -158,38 +296,14 @@ def load_user(user_id: str) -> AuthUser | None:
 
 @app.route("/")
 def home() -> str:
-    selected_source = "arxiv"
-    query = request.args.get("query", "")
-    registered = request.args.get("registered") == "1"
-    logged_in = request.args.get("logged_in") == "1"
-    logged_out = request.args.get("logged_out") == "1"
-    context = {
-        "query": query,
-        "registered": registered,
-        "logged_in": logged_in,
-        "logged_out": logged_out,
-        "default_interest_keys": [],
-        "used_default_interest_query": False,
-    }
-    result = None
+    return _render_discovery_view(template_name="home.html", endpoint="home", allow_banner_messages=True)
 
-    if request.args.get("fetch"):
-        fetch_query = query or None
-        user_id = _current_user_id()
-        if user_id is not None and not fetch_query and is_onboarding_completed(user_id=user_id, db_path=_auth_db_path()):
-            interest_keys = list_user_interest_keys(user_id=user_id, active_only=True, db_path=_auth_db_path())
-            if interest_keys:
-                fetch_query = _build_interest_default_query(interest_keys)
-                context["default_interest_keys"] = interest_keys
-                context["used_default_interest_query"] = True
 
-        result = fetch_items(selected_source, query=fetch_query)
-        if result["status"] == "success":
-            LATEST_RESULTS["arxiv"] = result["items"]
-        else:
-            LATEST_RESULTS["arxiv"] = []
-
-    return render_template("home.html", result=result, **context)
+@app.route("/discover")
+def discover_page() -> str:
+    if not current_user.is_authenticated:
+        return redirect(url_for("login_page"))
+    return _render_discovery_view(template_name="discover.html", endpoint="discover_page", allow_banner_messages=False)
 
 
 @app.route("/login")
@@ -250,6 +364,7 @@ def logout_submit():
     logout_user()
     session.pop("auth_version", None)
     session.pop("auth_expires_at", None)
+    session.pop(DISCOVERY_SESSION_QUERY_KEY, None)
     return redirect(url_for("home", logged_out=1))
 
 
@@ -302,12 +417,23 @@ def api_listings():
         return jsonify({"source": "", "status": "error", "items": [], "error_message": "Missing source parameter.", "fetched_at": None}), 400
     fetch_query = query
     user_id = _current_user_id()
+    interest_keys: list[str] = []
     if user_id is not None and not fetch_query and is_onboarding_completed(user_id=user_id, db_path=_auth_db_path()):
-        interest_keys = list_user_interest_keys(user_id=user_id, active_only=True, db_path=_auth_db_path())
+        effective_context = load_effective_interest_context(
+            user_id=user_id,
+            minimum_count=MIN_INTERESTS,
+            db_path=_auth_db_path(),
+        )
+        interest_keys = effective_context["effective_interest_keys"]
         if interest_keys:
             fetch_query = _build_interest_default_query(interest_keys)
 
-    result = fetch_items(source, query=fetch_query)
+    result = fetch_items(
+        source,
+        query=fetch_query,
+        interest_keys=interest_keys,
+        minimum_result_count=MIN_DEFAULT_RESULTS,
+    )
     if result["status"] == "error":
         return jsonify(result), 503
     return jsonify(result)

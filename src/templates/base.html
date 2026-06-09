@@ -11,7 +11,15 @@
       <header>
         <h1>Nhập môn công nghệ phần mềm</h1>
         <p>Khám phá các bài báo học thuật mới nhất từ arXiv.</p>
-        <a class="home-btn" href="{{ url_for('home') }}">Home</a>
+        <div class="top-nav-links">
+          <a class="home-btn{% if active_page == 'home' %} is-active{% endif %}" href="{{ url_for('home') }}">Home</a>
+          {% if current_user.is_authenticated %}
+            <a class="home-btn{% if active_page == 'discover' %} is-active{% endif %}" 
+              href="{{ url_for('discover_page', fetch=1) }}">
+              Discover
+            </a>
+          {% endif %}
+        </div>
         <div class="auth-actions">
           {% if current_user.is_authenticated %}
             <span class="auth-badge">Signed in as {{ current_user.email }}</span>
@@ -23,6 +31,8 @@
         <label for="nav-toggle" class="hamburger-icon">☰</label>
         <nav class="hamburger-nav">
           {% if current_user.is_authenticated %}
+            <a href="{{ url_for('home') }}">Home</a>
+            <a href="{{ url_for('discover_page', fetch=1) }}">Discover</a>
             <a href="{{ url_for('interests_page') }}">Interests</a>
             <a href="{{ url_for('favourites_page') }}">Favourites</a>
             <form method="post" action="{{ url_for('logout_submit') }}" class="logout-form">

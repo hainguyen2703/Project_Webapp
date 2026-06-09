@@ -1,4 +1,4 @@
 <!-- SPECKIT START -->
-Plan: specs/009-build-user-interest-onboarding/plan.md
-Spec: specs/009-build-user-interest-onboarding/spec.md
+Plan: specs/011-separate-discover-view/plan.md
+Spec: specs/011-separate-discover-view/spec.md
 <!-- SPECKIT END -->
