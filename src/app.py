@@ -206,6 +206,11 @@ def _render_discovery_view(*, template_name: str, endpoint: str, allow_banner_me
     registered = allow_banner_messages and request.args.get("registered") == "1"
     logged_in = allow_banner_messages and request.args.get("logged_in") == "1"
     logged_out = allow_banner_messages and request.args.get("logged_out") == "1"
+
+    # Pagination params
+    page = int(request.args.get("page", 1))
+    per_page = 10  # bạn có thể đổi 20 → 30 → 50 tùy ý
+
     context = _discovery_context(
         query=query,
         registered=registered,
@@ -213,7 +218,27 @@ def _render_discovery_view(*, template_name: str, endpoint: str, allow_banner_me
         logged_out=logged_out,
         endpoint=endpoint,
     )
-    result = _execute_discovery_fetch(selected_source=selected_source, query=query, context=context)
+
+    result = _execute_discovery_fetch(
+        selected_source=selected_source,
+        query=query,
+        context=context
+    )
+
+    # Nếu có kết quả → áp dụng pagination
+    if result and result.get("items"):
+        items = result["items"]
+        total = len(items)
+
+        start = (page - 1) * per_page
+        end = start + per_page
+
+        result["items"] = items[start:end]
+        result["page"] = page
+        result["per_page"] = per_page
+        result["total"] = total
+        result["pages"] = (total + per_page - 1) // per_page
+
     return render_template(template_name, result=result, **context)
 
 

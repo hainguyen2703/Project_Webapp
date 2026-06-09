@@ -63,6 +63,19 @@
             </article>
           {% endfor %}
         </div>
+        {% if result.pages > 1 %}
+          <div class="pagination">
+            {% if result.page > 1 %}
+              <a href="{{ search_action }}?query={{ query }}&fetch=1&page={{ result.page - 1 }}">Previous</a>
+            {% endif %}
+
+            <span>Page {{ result.page }} / {{ result.pages }}</span>
+
+            {% if result.page < result.pages %}
+              <a href="{{ search_action }}?query={{ query }}&fetch=1&page={{ result.page + 1 }}">Next</a>
+            {% endif %}
+          </div>
+        {% endif %}        
       </section>
     {% elif result.status == 'empty' %}
       <section class="status-message">
