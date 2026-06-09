@@ -38,7 +38,7 @@ app.config.setdefault("AUTH_DB_PATH", None)
 LATEST_RESULTS: dict[str, list[dict]] = {"arxiv": []}
 MIN_INTERESTS = 3
 MAX_INTERESTS = 10
-MIN_DEFAULT_RESULTS = 10
+MIN_DEFAULT_RESULTS = 50
 DISCOVERY_SESSION_QUERY_KEY = "discover_query"
 
 login_manager = LoginManager(app)

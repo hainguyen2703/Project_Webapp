@@ -115,7 +115,7 @@ def _filter_valid_items(items: list[PaperArticle]) -> list[PaperArticle]:
 def fetch_items(
     source: str,
     query: Optional[str] = None,
-    limit: int = 10,
+    limit: int = 50,
     interest_keys: Optional[list[str]] = None,
     minimum_result_count: int = 10,
 ) -> Dict[str, object]:

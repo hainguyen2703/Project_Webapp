@@ -73,7 +73,7 @@ def _build_query(query: Optional[str]) -> str:
 
 
 
-def fetch_arxiv_articles(limit: int = 10, query: Optional[str] = None, timeout_seconds: int = REQUEST_TIMEOUT_SECONDS) -> List[PaperArticle]:
+def fetch_arxiv_articles(limit: int = 50, query: Optional[str] = None, timeout_seconds: int = REQUEST_TIMEOUT_SECONDS) -> List[PaperArticle]:
     if arxiv is None:
         raise RuntimeError("Python package 'arxiv' is required for discovery retrieval.")
 
