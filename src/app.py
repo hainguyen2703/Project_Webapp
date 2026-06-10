@@ -732,6 +732,25 @@ def item_detail(item_id: str) -> str:
             db_path=_auth_db_path(),
         )
 
+    # Fallback to fetching from arXiv directly
+    if item is None:
+        from src.clients.arxiv_client import fetch_single_paper
+        item = fetch_single_paper(normalized_item_id)
+        if item:
+            # Save it as a snapshot!
+            save_paper_snapshot(
+                paper_id=item["id"],
+                source="arxiv",
+                title=item["title"],
+                authors=item["authors"],
+                summary=item["summary"],
+                url=item["url"],
+                published_at=item["published_at"],
+                primary_category=item["metadata"]["primary_category"],
+                categories=item["metadata"]["categories"],
+                metadata=item["metadata"]
+            )
+
     if item is None:
         abort(404)
 
