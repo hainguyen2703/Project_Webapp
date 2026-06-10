@@ -21,9 +21,25 @@
           {% endif %}
         </div>
         <div class="auth-actions">
-          {% if current_user.is_authenticated %}
-            <span class="auth-badge">Signed in as {{ current_user.email }}</span>
-          {% endif %}
+            {% if current_user.is_authenticated %}
+                <div class="user-avatar-container">
+                    <!-- Use Gravatar for avatar -->
+                    <img 
+                        class="user-avatar"
+                        src="https://www.gravatar.com/avatar/{{ current_user.email | lower | md5 }}?d=identicon&s=40"
+                        alt="User Avatar"
+                        title="{{ current_user.email }}"
+                    />
+                    <span class="auth-badge">Signed in as {{ current_user.email }}</span>
+                </div>
+            {% else %}
+                <img 
+                    class="user-avatar"
+                    src="https://www.gravatar.com/avatar/default?d=identicon&s=40"
+                    alt="Not Logged In"
+                    title="Not Logged In"
+                />
+            {% endif %}
         </div>
         
         <!-- Hamburger menu -->
@@ -35,6 +51,7 @@
             <a href="{{ url_for('discover_page', fetch=1) }}">Discover</a>
             <a href="{{ url_for('interests_page') }}">Interests</a>
             <a href="{{ url_for('favourites_page') }}">Favourites</a>
+            <a href="{{ url_for('analytics_page') }}">Analytics</a>
             <form method="post" action="{{ url_for('logout_submit') }}" class="logout-form">
               <button type="submit" class="logout-btn">Logout</button>
             </form>
@@ -44,9 +61,89 @@
           {% endif %}
         </nav>
       </header>
+      <!-- Notifications -->
+    {% if notifications %}
+        <div class="notifications-container">
+            {% for notification in notifications[:1] %}  {# Only show 1 at a time #}
+                <div class="notification-card" id="notification-{{ notification.id }}">
+                    <h4>New Paper: {{ notification.paper_title }}</h4>
+                    <p>Check out this new paper matching your interests!</p>
+                    <div class="notification-actions">
+                        <a href="{{ url_for('item_detail', item_id=notification.paper_id, source='arxiv') }}" 
+                           class="notification-link">View Paper</a>
+                        <form method="post" action="{{ url_for('dismiss_notification', notification_id=notification.id) }}" 
+                              style="display:inline;">
+                            <button type="submit" class="notification-dismiss">Dismiss</button>
+                        </form>
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+        
+        <!-- Auto-dismiss JS -->
+        <script>
+            document.addEventListener("DOMContentLoaded", function() {
+                const notifications = document.querySelectorAll(".notification-card");
+                notifications.forEach((notif, index) => {
+                    // Auto-dismiss after 60 seconds
+                    setTimeout(() => {
+                        notif.style.opacity = "0";
+                        notif.style.transition = "opacity 0.5s ease-out";
+                        setTimeout(() => {
+                            notif.style.display = "none";
+                        }, 500);
+                    }, 60000);
+                });
+            });
+        </script>
+    {% endif %}
       <main>
         {% block content %}{% endblock %}
       </main>
     </div>
+    
+    <!-- Favourite Toggle AJAX -->
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const favouriteForms = document.querySelectorAll('.favourite-form');
+            
+            favouriteForms.forEach(function(form) {
+                form.addEventListener('submit', async function(e) {
+                    e.preventDefault();
+                    
+                    const itemId = form.querySelector('[name="item_id"]').value;
+                    const source = form.querySelector('[name="source"]').value;
+                    const button = form.querySelector('.heart-btn');
+                    const heartIcon = form.querySelector('.heart-icon');
+                    
+                    try {
+                        const response = await fetch('{{ url_for("favourite_toggle") }}', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/x-www-form-urlencoded',
+                            },
+                            body: new URLSearchParams({
+                                'item_id': itemId,
+                                'source': source
+                            })
+                        });
+                        
+                        const data = await response.json();
+                        
+                        if (data.is_favourite) {
+                            heartIcon.textContent = '♥';
+                            button.title = 'Remove from favourites';
+                        } else {
+                            heartIcon.textContent = '♡';
+                            button.title = 'Add to favourites';
+                        }
+                        
+                    } catch (error) {
+                        console.error('Error toggling favourite:', error);
+                    }
+                });
+            });
+        });
+    </script>
   </body>
 </html>

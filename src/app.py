@@ -9,6 +9,7 @@ from flask import Flask, abort, jsonify, redirect, render_template, request, ses
 from src.clients.arxiv_client import extract_arxiv_id
 from src.models.auth_user import AuthUser
 from src.services.auth_service import authenticate_user, issue_session_expiry, session_is_expired
+import hashlib
 from src.services.db import (
     add_favourite,
     bump_session_version,
@@ -24,14 +25,34 @@ from src.services.db import (
     reconcile_user_interests,
     remove_favourite,
     set_user_interest_preferences,
+    save_paper_snapshot,
+    get_paper_snapshot,
+    list_paper_snapshots,
+    upsert_user_metadata,
+    list_user_notifications,
+    mark_notification_read,
+    mark_notification_dismissed,
+    get_related_papers,
+    add_paper_notification
 )
 from src.services.discovery_service import ListingContextKeys, fetch_items
 from src.services.registration_service import generate_submission_token, register_user
 from src.services.db import get_interest_label
+from src.services.advanced_service import (
+    calculate_worth_reading_score, score_to_stars, calculate_analytics, compute_and_store_related_papers
+)
+from src.services.scheduler_service import SchedulerService
 
 
 app = Flask(__name__, template_folder="templates", static_folder="static")
 app.secret_key = os.environ.get("SECRET_KEY", "dev-only-insecure-key-change-in-prod")
+
+
+# Add Jinja2 filter for md5 hashing
+def md5_filter(text):
+    return hashlib.md5(text.encode('utf-8')).hexdigest()
+
+app.jinja_env.filters['md5'] = md5_filter
 app.config.setdefault("REGISTRATION_DB_PATH", None)
 app.config.setdefault("AUTH_DB_PATH", None)
 
@@ -44,6 +65,8 @@ DISCOVERY_SESSION_QUERY_KEY = "discover_query"
 login_manager = LoginManager(app)
 
 init_db(app.config.get("AUTH_DB_PATH") or app.config.get("REGISTRATION_DB_PATH"))
+# Initialize scheduler (background jobs)
+SchedulerService.initialize()
 
 
 def _registration_db_path() -> str | None:
@@ -197,6 +220,44 @@ def _execute_discovery_fetch(*, selected_source: str, query: str, context: dict[
 
         if result["status"] == "success":
             LATEST_RESULTS["arxiv"] = result["items"]
+            # Save all fetched papers to snapshots
+            new_papers = []
+            for paper in result["items"]:
+                paper_categories = paper.get("metadata", {}).get("categories", [])
+                save_paper_snapshot(
+                    paper_id=paper["id"],
+                    source=paper.get("source", "arxiv"),
+                    title=paper["title"],
+                    authors=paper.get("authors", []),
+                    summary=paper.get("summary", ""),
+                    url=paper.get("url", ""),
+                    published_at=paper.get("published_at", ""),
+                    primary_category=paper.get("metadata", {}).get("primary_category"),
+                    categories=paper_categories,
+                    metadata=paper.get("metadata", {})
+                )
+                new_papers.append(paper)
+            # Now compute related papers!
+            compute_and_store_related_papers()
+            
+            # Add notifications for all users about these new papers, avoid duplicates
+            if current_user.is_authenticated:
+                user_id = _current_user_id()
+                user_interests = list_user_interest_keys(user_id=user_id)
+                existing_notifications = list_user_notifications(user_id=user_id, only_undismissed=False)
+                existing_paper_ids = {n["paper_id"] for n in existing_notifications}
+                for paper in new_papers:
+                    if paper["id"] in existing_paper_ids:
+                        continue
+                    paper_cats = paper.get("metadata", {}).get("categories", [])
+                    has_matching_interest = any(interest in paper_cats for interest in user_interests)
+                    if has_matching_interest:
+                        add_paper_notification(
+                            user_id=user_id,
+                            paper_id=paper["id"],
+                            paper_title=paper["title"],
+                            paper_url=paper["url"]
+                        )
         else:
             LATEST_RESULTS["arxiv"] = []
     return result
@@ -205,6 +266,27 @@ def _execute_discovery_fetch(*, selected_source: str, query: str, context: dict[
 def _render_discovery_view(*, template_name: str, endpoint: str, allow_banner_messages: bool) -> str:
     selected_source = "arxiv"
     query = _synchronized_query_value()
+    
+    # Add to search history if query is not empty
+    if query.strip():
+        # Initialize search history if it doesn't exist
+        if "search_history" not in session:
+            session["search_history"] = []
+        
+        # Remove query if already present to avoid duplicates
+        session["search_history"] = [
+            q for q in session["search_history"] 
+            if q.lower() != query.lower()
+        ]
+        
+        # Add query to front of history
+        session["search_history"].insert(0, query)
+        
+        # Keep only last 10 searches
+        session["search_history"] = session["search_history"][:10]
+        
+        # Mark session modified to save changes
+        session.modified = True
     registered = allow_banner_messages and request.args.get("registered") == "1"
     logged_in = allow_banner_messages and request.args.get("logged_in") == "1"
     logged_out = allow_banner_messages and request.args.get("logged_out") == "1"
@@ -218,7 +300,7 @@ def _render_discovery_view(*, template_name: str, endpoint: str, allow_banner_me
         registered=registered,
         logged_in=logged_in,
         logged_out=logged_out,
-        endpoint=endpoint,
+        endpoint=endpoint
     )
 
     result = _execute_discovery_fetch(
@@ -227,15 +309,39 @@ def _render_discovery_view(*, template_name: str, endpoint: str, allow_banner_me
         context=context
     )
 
-    # Nếu có kết quả → áp dụng pagination
+    # Nếu có kết quả → áp dụng pagination and mark duplicates
     if result and result.get("items"):
         items = result["items"]
         total = len(items)
 
+        # Track seen paper IDs for duplicate detection
+        seen_ids = set()
+        # Get user favourites if logged in
+        user_id = _current_user_id()
+        favourites = []
+        if user_id:
+            favourites = list_favourites(user_id=user_id, db_path=_auth_db_path())
+            # Filter to only arxiv favourites
+            favourites = [f for f in favourites if f["source"] == "arxiv"]
+            favourite_ids = {_normalize_item_id(str(f["id"])) for f in favourites}
+        else:
+            favourite_ids = set()
+        
+        # Add duplicate and favourite flags to items
+        processed_items = []
+        for item in items:
+            normalized_id = _normalize_item_id(str(item.get("id", "")))
+            is_duplicate = normalized_id in seen_ids
+            seen_ids.add(normalized_id)
+            item_with_flag = dict(item)
+            item_with_flag["is_duplicate"] = is_duplicate
+            item_with_flag["is_favourite"] = normalized_id in favourite_ids
+            processed_items.append(item_with_flag)
+
+        # Now apply pagination
         start = (page - 1) * per_page
         end = start + per_page
-
-        result["items"] = items[start:end]
+        result["items"] = processed_items[start:end]
         result["page"] = page
         result["per_page"] = per_page
         result["total"] = total
@@ -276,6 +382,31 @@ def inject_active_route() -> dict[str, str]:
     else:
         active_page = ""
     return {"active_page": active_page}
+
+
+@app.context_processor
+def inject_notifications() -> dict[str, Any]:
+    user_id = _current_user_id()
+    notifications = []
+    if user_id:
+        notifications = list_user_notifications(user_id=user_id, only_undismissed=True)
+    return {"notifications": notifications}
+
+
+@app.route("/notification/<int:notification_id>/mark-read", methods=["POST"])
+def mark_notification_as_read(notification_id: int):
+    if not current_user.is_authenticated:
+        abort(403)
+    mark_notification_read(notification_id=notification_id, db_path=_auth_db_path())
+    return redirect(request.referrer or url_for("home"))
+
+
+@app.route("/notification/<int:notification_id>/dismiss", methods=["POST"])
+def dismiss_notification(notification_id: int):
+    if not current_user.is_authenticated:
+        abort(403)
+    mark_notification_dismissed(notification_id=notification_id, db_path=_auth_db_path())
+    return redirect(request.referrer or url_for("home"))
 
 
 @login_manager.user_loader
@@ -330,15 +461,19 @@ def login_submit():
     auth_result = authenticate_user(email=email, password=password, db_path=_auth_db_path())
 
     if auth_result.success:
+        user_id = int(auth_result.user_id or 0)
         login_user(
             AuthUser(
-                user_id=int(auth_result.user_id or 0),
+                user_id=user_id,
                 email=auth_result.email,
                 session_version=auth_result.session_version,
             )
         )
         session["auth_version"] = auth_result.session_version
         session["auth_expires_at"] = issue_session_expiry()
+        # Update last login time in user metadata
+        from datetime import datetime, timezone
+        upsert_user_metadata(user_id=user_id, last_login_at=datetime.now(timezone.utc).isoformat())
         return redirect(url_for("home", logged_in=1))
 
     status_code = 429 if auth_result.code == "throttled" else 200
@@ -407,6 +542,40 @@ def register_submit():
         ),
         status_code,
     )
+
+
+@app.route("/test-notifications", methods=["GET", "POST"])
+def test_notifications():
+    if not current_user.is_authenticated:
+        return redirect(url_for("login_page"))
+    
+    # First, let's add a TEST notification manually so we can see it!
+    user_id = _current_user_id()
+    add_paper_notification(
+        user_id=user_id,
+        paper_id="2606.12345v1",
+        paper_title="Test Paper: Advanced ML for Everything",
+        paper_url="https://arxiv.org/abs/2606.12345v1"
+    )
+    
+    # Also manually run the notification check
+    from src.services.scheduler_service import check_new_papers_for_all_users
+    check_new_papers_for_all_users()
+    
+    return redirect(url_for("home"))
+
+
+@app.route("/analytics", endpoint="analytics_page")
+def analytics_page():
+    if not current_user.is_authenticated:
+        return redirect(url_for("login_page"))
+    analytics_data = calculate_analytics()
+    notifications = list_user_notifications(
+        user_id=_current_user_id(),
+        only_undismissed=True,
+        limit=10
+    ) if _current_user_id() else []
+    return render_template("analytics.html", analytics=analytics_data, notifications=notifications)
 
 
 @app.route("/api/listings")
@@ -583,25 +752,89 @@ def item_detail(item_id: str) -> str:
     primary_category = item.get("metadata", {}).get("primary_category", "").lower()
     item["primary_category_label"] = get_interest_label(primary_category)        
 
-    return render_template("detail.html", item=item, source=source, is_favourite=is_favourite)
+    # Calculate "worth reading" score
+    score = None
+    if user_id is not None:
+        user_interests = list_user_interest_keys(user_id=user_id, db_path=_auth_db_path())
+        paper_cats = item.get("metadata", {}).get("categories", [])
+        score = calculate_worth_reading_score(
+            item["published_at"],
+            paper_cats,
+            user_interests,
+            primary_category
+        )
+
+    # Get related papers and fetch full info
+    related_paper_ids = get_related_papers(source_paper_id=normalized_item_id, limit=5)
+    # Enrich with actual paper info
+    enriched_related = []
+    for rel in related_paper_ids:
+        try:
+            snap = get_paper_snapshot(paper_id=rel["target_paper_id"], source="arxiv")
+            if snap:
+                enriched_related.append({
+                    "id": snap["id"],
+                    "title": snap["title"],
+                    "url": snap["url"],
+                    "similarity": round(rel["similarity_score"], 2)
+                })
+            else:
+                # Try to find in latest results
+                found_item = next((i for i in items if _normalize_item_id(str(i.get("id", ""))) == rel["target_paper_id"]), None)
+                if found_item:
+                    enriched_related.append({
+                        "id": found_item["id"],
+                        "title": found_item["title"],
+                        "url": found_item["url"],
+                        "similarity": round(rel["similarity_score"], 2)
+                    })
+        except Exception:
+            # Skip this related paper if there's an error
+            pass
+    
+    # If no related papers found, add some recent saved papers as fallbacks
+    if len(enriched_related) < 3:
+        recent_snapshots = list_paper_snapshots(limit=5)
+        for snap in recent_snapshots:
+            if snap["id"] != normalized_item_id:  # Don't include the current paper
+                # Check if we already have this paper
+                already_added = any(rel["id"] == snap["id"] for rel in enriched_related)
+                if not already_added and len(enriched_related) < 5:
+                    enriched_related.append({
+                        "id": snap["id"],
+                        "title": snap["title"],
+                        "url": snap["url"],
+                        "similarity": "Recent"
+                    })
+
+    return render_template(
+        "detail.html",
+        item=item,
+        source=source,
+        is_favourite=is_favourite,
+        score=score,
+        score_stars=score_to_stars(score["overall_score"]) if score else 0,
+        related_papers=enriched_related
+    )
 
 
 @app.route("/favourite/toggle", methods=["POST"])
 def favourite_toggle():
     if not current_user.is_authenticated:
-        abort(404)
+        return jsonify({"error": "Not logged in"}), 401
 
     source, item_id = _canonical_source_and_id(
         request.form.get("source", "arxiv"),
         request.form.get("item_id", ""),
     )
     if not item_id:
-        return redirect(url_for("home"))
+        return jsonify({"error": "No item ID"}), 400
 
     user_id = _current_user_id()
     if user_id is None:
-        abort(404)
+        return jsonify({"error": "Not logged in"}), 401
 
+    is_favourite = False
     if favourite_exists(
         user_id=user_id,
         source=source,
@@ -624,8 +857,9 @@ def favourite_toggle():
                 paper=paper,
                 db_path=_auth_db_path(),
             )
+            is_favourite = True
 
-    return redirect(url_for("item_detail", item_id=item_id, source=source))
+    return jsonify({"item_id": item_id, "is_favourite": is_favourite})
 
 
 @app.route("/favourites")

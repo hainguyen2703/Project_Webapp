@@ -19,6 +19,32 @@ _ARXIV_ID_PATTERNS = [
 ]
 
 
+def _clean_summary(summary: str) -> str:
+    """Clean up LaTeX-style math symbols in the summary."""
+    # Replace common LaTeX symbols
+    replacements = {
+        r"$\pm$": "±",
+        r"\pm": "±",
+        r"$\mu$": "µ",
+        r"\mu": "µ",
+        r"$^\circ$": "°",
+        r"\circ": "°",
+        r"$\sim$": "~",
+        r"\sim": "~",
+        r"$": "",  # Remove remaining dollar signs
+        r"\_": "_",
+        r"\$": "$",
+        r"\&": "&",
+        r"\%": "%",
+        r"\#": "#",
+        r"\{": "{",
+        r"\}": "}",
+    }
+    for latex, plain in replacements.items():
+        summary = summary.replace(latex, plain)
+    return summary
+
+
 def _parse_iso(timestamp: object) -> str:
     if isinstance(timestamp, datetime.datetime):
         if timestamp.tzinfo is None:
@@ -105,7 +131,7 @@ def fetch_arxiv_articles(limit: int = 50, query: Optional[str] = None, timeout_s
 
         arxiv_id = extract_arxiv_id(raw_id) or extract_arxiv_id(fallback_id) or ""
         title = str(getattr(result, "title", "") or "").strip()
-        summary = str(getattr(result, "summary", "") or "").strip()
+        summary = _clean_summary(str(getattr(result, "summary", "") or "").strip())
         raw_authors = getattr(result, "authors", []) or []
         authors = [str(getattr(author, "name", "") or "").strip() for author in raw_authors if str(getattr(author, "name", "") or "").strip()]
         published = _parse_iso(getattr(result, "published", ""))

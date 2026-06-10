@@ -32,3 +32,6 @@ htmlcov/
 Thumbs.db
 *.tmp
 *.swp
+
+# Database
+src/data/

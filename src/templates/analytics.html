@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="return-link">
+  <a href="{{ url_for('home') }}">&larr; Back to Home</a>
+</div>
+
+<section class="detail-panel">
+  <h2>📊 Trend Analytics</h2>
+  <p style="color: #6b7280;">Explore paper count trends, top authors, and hot keywords from your saved papers!</p>
+</section>
+
+<section class="analytics-grid">
+  <div class="analytics-section">
+    <h3>📈 Paper Count Trends</h3>
+    {% if analytics.paper_counts %}
+    <ul class="trend-list">
+      {% for date, count in analytics.paper_counts %}
+      <li><strong>{{ date }}</strong>: {{ count }} papers</li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p style="color: #9ca3af;">Not enough data yet (fetch some papers first).</p>
+    {% endif %}
+  </div>
+  
+  <div class="analytics-section">
+    <h3>👥 Top Authors</h3>
+    {% if analytics.top_authors %}
+    <ul class="trend-list">
+      {% for author in analytics.top_authors %}
+      <li>{{ author }}</li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p style="color: #9ca3af;">Not enough data yet.</p>
+    {% endif %}
+  </div>
+</section>
+
+<section class="analytics-section">
+  <h3>🔥 Hot Keywords & Topics</h3>
+  {% if analytics.hot_keywords %}
+  <ul class="trend-list">
+    {% for keyword in analytics.hot_keywords %}
+    <li>{{ keyword }}</li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p style="color: #9ca3af;">Not enough data yet.</p>
+  {% endif %}
+</section>
+
+{% endblock %}
