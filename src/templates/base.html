@@ -73,7 +73,7 @@
                            class="notification-link">View Paper</a>
                         <form method="post" action="{{ url_for('dismiss_notification', notification_id=notification.id) }}" 
                               style="display:inline;">
-                            <button type="submit" class="notification-dismiss">Dismiss</button>
+                            <button class="notification-dismiss" data-id="{{ notification.id }}">Dismiss</button>
                         </form>
                     </div>
                 </div>
@@ -104,46 +104,36 @@
     
     <!-- Favourite Toggle AJAX -->
     <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            const favouriteForms = document.querySelectorAll('.favourite-form');
-            
-            favouriteForms.forEach(function(form) {
-                form.addEventListener('submit', async function(e) {
-                    e.preventDefault();
-                    
-                    const itemId = form.querySelector('[name="item_id"]').value;
-                    const source = form.querySelector('[name="source"]').value;
-                    const button = form.querySelector('.heart-btn');
-                    const heartIcon = form.querySelector('.heart-icon');
-                    
-                    try {
-                        const response = await fetch('{{ url_for("favourite_toggle") }}', {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/x-www-form-urlencoded',
-                            },
-                            body: new URLSearchParams({
-                                'item_id': itemId,
-                                'source': source
-                            })
-                        });
-                        
-                        const data = await response.json();
-                        
-                        if (data.is_favourite) {
-                            heartIcon.textContent = '♥';
-                            button.title = 'Remove from favourites';
-                        } else {
-                            heartIcon.textContent = '♡';
-                            button.title = 'Add to favourites';
+    document.addEventListener("DOMContentLoaded", function () {
+        const dismissButtons = document.querySelectorAll(".notification-dismiss");
+
+        dismissButtons.forEach(btn => {
+            btn.addEventListener("click", async () => {
+                const id = btn.dataset.id;
+
+                try {
+                    // Gửi request POST đến Flask
+                    await fetch(`/dismiss/${id}`, {
+                        method: "POST",
+                        headers: {
+                            "X-Requested-With": "XMLHttpRequest"
                         }
-                        
-                    } catch (error) {
-                        console.error('Error toggling favourite:', error);
-                    }
-                });
+                    });
+
+                    // Ẩn thông báo trên giao diện
+                    const card = btn.closest(".notification-card");
+                    card.style.opacity = "0";
+                    card.style.transition = "opacity 0.4s ease-out";
+
+                    setTimeout(() => card.remove(), 400);
+
+                } catch (err) {
+                    console.error("Dismiss failed:", err);
+                }
             });
         });
+    });
     </script>
+
   </body>
 </html>
