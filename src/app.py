@@ -405,7 +405,14 @@ def mark_notification_as_read(notification_id: int):
 def dismiss_notification(notification_id: int):
     if not current_user.is_authenticated:
         abort(403)
+
     mark_notification_dismissed(notification_id=notification_id, db_path=_auth_db_path())
+
+    # Nếu là AJAX → trả JSON, không redirect
+    if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return jsonify({"status": "ok"})
+
+    # Nếu không phải AJAX → fallback redirect
     return redirect(request.referrer or url_for("home"))
 
 
