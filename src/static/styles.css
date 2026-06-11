@@ -527,13 +527,24 @@ input:not([type="checkbox"]) {
 /* Notifications */
 .notifications-container {
     position: fixed;
-    top: 100px;
-    right: 24px;
+    top: 140px;
+    left: 16px;
+    right: auto;
+    max-width: 280px;    /* luôn nhỏ gọn */
+    width: 100%;
     z-index: 1000;
     display: flex;
     flex-direction: column;
     gap: 12px;
-    max-width: 360px;
+}
+
+/* Khi màn hình nhỏ hơn 600px → thu nhỏ thêm */
+@media (max-width: 600px) {
+    .notifications-container {
+        top: 160px;      /* header trên mobile cao hơn */
+        left: 10px;
+        max-width: 240px;
+    }
 }
 
 .notification-card {
