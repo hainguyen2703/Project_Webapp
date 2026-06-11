@@ -416,8 +416,6 @@ def dismiss_notification(notification_id: int):
     return redirect(request.referrer or url_for("home"))
 
 
-
-
 @login_manager.user_loader
 def load_user(user_id: str) -> AuthUser | None:
     if not user_id:
