@@ -170,6 +170,134 @@ def init_db(db_path: Optional[Union[str, Path]] = None) -> None:
             """
         )
 
+        # New advanced features tables
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS paper_snapshots (
+                id TEXT NOT NULL,
+                source TEXT NOT NULL,
+                title TEXT NOT NULL,
+                authors_json TEXT NOT NULL,
+                summary TEXT NOT NULL,
+                url TEXT NOT NULL,
+                published_at TEXT NOT NULL,
+                primary_category TEXT,
+                categories_json TEXT,
+                snapshot_at TEXT NOT NULL,
+                metadata_json TEXT,
+                PRIMARY KEY (id, source)
+            )
+            """
+        )
+        connection.execute(
+            """
+            CREATE INDEX IF NOT EXISTS ix_paper_snapshots_published_at
+            ON paper_snapshots(published_at DESC)
+            """
+        )
+        connection.execute(
+            """
+            CREATE INDEX IF NOT EXISTS ix_paper_snapshots_primary_category
+            ON paper_snapshots(primary_category)
+            """
+        )
+
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS paper_scores (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                paper_id TEXT NOT NULL,
+                user_id INTEGER,
+                overall_score REAL NOT NULL,
+                recency_score REAL NOT NULL,
+                relevance_score REAL NOT NULL,
+                popularity_score REAL NOT NULL,
+                calculated_at TEXT NOT NULL,
+                FOREIGN KEY(user_id) REFERENCES user_accounts(id) ON DELETE CASCADE
+            )
+            """
+        )
+        connection.execute(
+            """
+            CREATE INDEX IF NOT EXISTS ix_paper_scores_paper_user
+            ON paper_scores(paper_id, user_id)
+            """
+        )
+
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS paper_relations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                source_paper_id TEXT NOT NULL,
+                target_paper_id TEXT NOT NULL,
+                similarity_score REAL NOT NULL,
+                similarity_type TEXT NOT NULL,
+                calculated_at TEXT NOT NULL
+            )
+            """
+        )
+        connection.execute(
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS ux_paper_relations_source_target
+            ON paper_relations(source_paper_id, target_paper_id, similarity_type)
+            """
+        )
+
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS paper_notifications (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                paper_id TEXT NOT NULL,
+                paper_title TEXT NOT NULL,
+                paper_url TEXT NOT NULL,
+                notification_type TEXT NOT NULL DEFAULT 'new_paper',
+                is_read INTEGER NOT NULL DEFAULT 0,
+                is_dismissed INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL,
+                delivered_at TEXT,
+                FOREIGN KEY(user_id) REFERENCES user_accounts(id) ON DELETE CASCADE
+            )
+            """
+        )
+        connection.execute(
+            """
+            CREATE INDEX IF NOT EXISTS ix_paper_notifications_user
+            ON paper_notifications(user_id, is_dismissed, created_at DESC)
+            """
+        )
+
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS category_stats (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                category TEXT NOT NULL,
+                date_bucket TEXT NOT NULL,
+                paper_count INTEGER NOT NULL DEFAULT 0,
+                top_authors_json TEXT,
+                hot_keywords_json TEXT,
+                calculated_at TEXT NOT NULL
+            )
+            """
+        )
+        connection.execute(
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS ux_category_stats_category_date
+            ON category_stats(category, date_bucket)
+            """
+        )
+
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS user_metadata (
+                user_id INTEGER PRIMARY KEY,
+                last_login_at TEXT NOT NULL,
+                last_notification_check_at TEXT,
+                FOREIGN KEY(user_id) REFERENCES user_accounts(id) ON DELETE CASCADE
+            )
+            """
+        )
+
         _seed_interest_catalog(connection)
 
 
@@ -631,4 +759,418 @@ def load_effective_interest_context(
         "retired_interest_keys": retired_keys,
         "minimum_required": minimum_count,
         "last_reconciled_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+# --- Advanced Features: Paper Snapshots ---
+
+def save_paper_snapshot(
+    *,
+    paper_id: str,
+    source: str,
+    title: str,
+    authors: list[str],
+    summary: str,
+    url: str,
+    published_at: str,
+    primary_category: Optional[str] = None,
+    categories: Optional[list[str]] = None,
+    metadata: Optional[dict[str, Any]] = None,
+    db_path: Optional[Union[str, Path]] = None,
+) -> bool:
+    timestamp = datetime.now(timezone.utc).isoformat()
+    authors_json = json.dumps(authors)
+    categories_json = json.dumps(categories or [])
+    metadata_json = json.dumps(metadata or {})
+    with get_connection(db_path) as connection:
+        cursor = connection.execute(
+            """
+            INSERT OR REPLACE INTO paper_snapshots (
+                id, source, title, authors_json, summary, url, published_at, 
+                primary_category, categories_json, snapshot_at, metadata_json
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                paper_id, source, title, authors_json, summary, url, published_at,
+                primary_category, categories_json, timestamp, metadata_json
+            ),
+        )
+    return cursor.rowcount > 0
+
+
+def get_paper_snapshot(
+    *,
+    paper_id: str,
+    source: str,
+    db_path: Optional[Union[str, Path]] = None,
+) -> Optional[dict[str, Any]]:
+    with get_connection(db_path) as connection:
+        row = connection.execute(
+            """
+            SELECT id, source, title, authors_json, summary, url, published_at, 
+                   primary_category, categories_json, snapshot_at, metadata_json
+            FROM paper_snapshots
+            WHERE id = ? AND source = ?
+            LIMIT 1
+            """,
+            (paper_id, source),
+        ).fetchone()
+    if not row:
+        return None
+    return {
+        "id": row["id"],
+        "source": row["source"],
+        "title": row["title"],
+        "authors": json.loads(row["authors_json"]),
+        "summary": row["summary"],
+        "url": row["url"],
+        "published_at": row["published_at"],
+        "primary_category": row["primary_category"],
+        "categories": json.loads(row["categories_json"]),
+        "snapshot_at": row["snapshot_at"],
+        "metadata": json.loads(row["metadata_json"]),
+    }
+
+
+def list_paper_snapshots(
+    *,
+    category: Optional[str] = None,
+    since: Optional[str] = None,
+    limit: Optional[int] = None,
+    db_path: Optional[Union[str, Path]] = None,
+) -> list[dict[str, Any]]:
+    query = """
+        SELECT id, source, title, authors_json, summary, url, published_at, 
+               primary_category, categories_json, snapshot_at, metadata_json
+        FROM paper_snapshots
+    """
+    params = []
+    if category:
+        query += " WHERE primary_category = ?"
+        params.append(category)
+    if since:
+        if category:
+            query += " AND published_at >= ?"
+        else:
+            query += " WHERE published_at >= ?"
+        params.append(since)
+    query += " ORDER BY published_at DESC"
+    if limit:
+        query += " LIMIT ?"
+        params.append(limit)
+    with get_connection(db_path) as connection:
+        rows = connection.execute(query, tuple(params)).fetchall()
+    return [
+        {
+            "id": r["id"],
+            "source": r["source"],
+            "title": r["title"],
+            "authors": json.loads(r["authors_json"]),
+            "summary": r["summary"],
+            "url": r["url"],
+            "published_at": r["published_at"],
+            "primary_category": r["primary_category"],
+            "categories": json.loads(r["categories_json"]),
+            "snapshot_at": r["snapshot_at"],
+            "metadata": json.loads(r["metadata_json"]),
+        }
+        for r in rows
+    ]
+
+
+# --- Advanced Features: User Metadata ---
+
+def get_user_metadata(
+    *,
+    user_id: int,
+    db_path: Optional[Union[str, Path]] = None,
+) -> Optional[dict[str, Any]]:
+    with get_connection(db_path) as connection:
+        row = connection.execute(
+            "SELECT user_id, last_login_at, last_notification_check_at FROM user_metadata WHERE user_id = ?",
+            (user_id,),
+        ).fetchone()
+    if not row:
+        return None
+    return {
+        "user_id": row["user_id"],
+        "last_login_at": row["last_login_at"],
+        "last_notification_check_at": row["last_notification_check_at"],
+    }
+
+
+def upsert_user_metadata(
+    *,
+    user_id: int,
+    last_login_at: Optional[str] = None,
+    last_notification_check_at: Optional[str] = None,
+    db_path: Optional[Union[str, Path]] = None,
+) -> None:
+    now = datetime.now(timezone.utc).isoformat()
+    existing = get_user_metadata(user_id=user_id, db_path=db_path)
+    ll_at = last_login_at or (existing["last_login_at"] if existing else now)
+    lnc_at = last_notification_check_at or (existing["last_notification_check_at"] if existing else None)
+    with get_connection(db_path) as connection:
+        connection.execute(
+            """
+            INSERT INTO user_metadata (user_id, last_login_at, last_notification_check_at)
+            VALUES (?, ?, ?)
+            ON CONFLICT(user_id) DO UPDATE SET
+                last_login_at = excluded.last_login_at,
+                last_notification_check_at = excluded.last_notification_check_at
+            """,
+            (user_id, ll_at, lnc_at),
+        )
+
+
+# --- Advanced Features: Paper Notifications ---
+
+def add_paper_notification(
+    *,
+    user_id: int,
+    paper_id: str,
+    paper_title: str,
+    paper_url: str,
+    notification_type: str = "new_paper",
+    db_path: Optional[Union[str, Path]] = None,
+) -> int:
+    now = datetime.now(timezone.utc).isoformat()
+    with get_connection(db_path) as connection:
+        cursor = connection.execute(
+            """
+            INSERT INTO paper_notifications (
+                user_id, paper_id, paper_title, paper_url, 
+                notification_type, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (user_id, paper_id, paper_title, paper_url, notification_type, now),
+        )
+        return cursor.lastrowid or 0
+
+
+def list_user_notifications(
+    *,
+    user_id: int,
+    only_undismissed: bool = True,
+    limit: Optional[int] = None,
+    db_path: Optional[Union[str, Path]] = None,
+) -> list[dict[str, Any]]:
+    query = """
+        SELECT id, user_id, paper_id, paper_title, paper_url, notification_type,
+               is_read, is_dismissed, created_at, delivered_at
+        FROM paper_notifications
+        WHERE user_id = ?
+    """
+    params = [user_id]
+    if only_undismissed:
+        query += " AND is_dismissed = 0"
+    query += " ORDER BY created_at DESC"
+    if limit:
+        query += " LIMIT ?"
+        params.append(limit)
+    with get_connection(db_path) as connection:
+        rows = connection.execute(query, tuple(params)).fetchall()
+    return [
+        {
+            "id": r["id"],
+            "user_id": r["user_id"],
+            "paper_id": r["paper_id"],
+            "paper_title": r["paper_title"],
+            "paper_url": r["paper_url"],
+            "notification_type": r["notification_type"],
+            "is_read": bool(r["is_read"]),
+            "is_dismissed": bool(r["is_dismissed"]),
+            "created_at": r["created_at"],
+            "delivered_at": r["delivered_at"],
+        }
+        for r in rows
+    ]
+
+
+def mark_notification_read(
+    *,
+    notification_id: int,
+    db_path: Optional[Union[str, Path]] = None,
+) -> bool:
+    with get_connection(db_path) as connection:
+        cursor = connection.execute(
+            "UPDATE paper_notifications SET is_read = 1 WHERE id = ?",
+            (notification_id,),
+        )
+    return cursor.rowcount > 0
+
+
+def mark_notification_dismissed(
+    *,
+    notification_id: int,
+    db_path: Optional[Union[str, Path]] = None,
+) -> bool:
+    with get_connection(db_path) as connection:
+        cursor = connection.execute(
+            "UPDATE paper_notifications SET is_dismissed = 1 WHERE id = ?",
+            (notification_id,),
+        )
+    return cursor.rowcount > 0
+
+
+# --- Advanced Features: Paper Scores & Relations ---
+
+def save_paper_score(
+    *,
+    paper_id: str,
+    user_id: Optional[int],
+    overall_score: float,
+    recency_score: float,
+    relevance_score: float,
+    popularity_score: float,
+    db_path: Optional[Union[str, Path]] = None,
+) -> bool:
+    now = datetime.now(timezone.utc).isoformat()
+    with get_connection(db_path) as connection:
+        cursor = connection.execute(
+            """
+            INSERT OR REPLACE INTO paper_scores (
+                paper_id, user_id, overall_score, recency_score, relevance_score, popularity_score, calculated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (paper_id, user_id, overall_score, recency_score, relevance_score, popularity_score, now),
+        )
+    return cursor.rowcount > 0
+
+
+def get_paper_score(
+    *,
+    paper_id: str,
+    user_id: Optional[int],
+    db_path: Optional[Union[str, Path]] = None,
+) -> Optional[dict[str, Any]]:
+    query = """
+        SELECT paper_id, user_id, overall_score, recency_score, relevance_score, popularity_score, calculated_at
+        FROM paper_scores
+        WHERE paper_id = ?
+    """
+    params = [paper_id]
+    if user_id is not None:
+        query += " AND user_id = ?"
+        params.append(user_id)
+    else:
+        query += " AND user_id IS NULL"
+    with get_connection(db_path) as connection:
+        row = connection.execute(query, tuple(params)).fetchone()
+    if not row:
+        return None
+    return {
+        "paper_id": row["paper_id"],
+        "user_id": row["user_id"],
+        "overall_score": row["overall_score"],
+        "recency_score": row["recency_score"],
+        "relevance_score": row["relevance_score"],
+        "popularity_score": row["popularity_score"],
+        "calculated_at": row["calculated_at"],
+    }
+
+
+def save_paper_relation(
+    *,
+    source_paper_id: str,
+    target_paper_id: str,
+    similarity_score: float,
+    similarity_type: str = "combined",
+    db_path: Optional[Union[str, Path]] = None,
+) -> bool:
+    now = datetime.now(timezone.utc).isoformat()
+    with get_connection(db_path) as connection:
+        cursor = connection.execute(
+            """
+            INSERT OR REPLACE INTO paper_relations (
+                source_paper_id, target_paper_id, similarity_score, similarity_type, calculated_at
+            ) VALUES (?, ?, ?, ?, ?)
+            """,
+            (source_paper_id, target_paper_id, similarity_score, similarity_type, now),
+        )
+    return cursor.rowcount > 0
+
+
+def get_related_papers(
+    *,
+    source_paper_id: str,
+    similarity_type: str = "combined",
+    limit: int = 5,
+    db_path: Optional[Union[str, Path]] = None,
+) -> list[dict[str, Any]]:
+    with get_connection(db_path) as connection:
+        rows = connection.execute(
+            """
+            SELECT target_paper_id, similarity_score, similarity_type, calculated_at
+            FROM paper_relations
+            WHERE source_paper_id = ? AND similarity_type = ?
+            ORDER BY similarity_score DESC
+            LIMIT ?
+            """,
+            (source_paper_id, similarity_type, limit),
+        ).fetchall()
+    return [
+        {
+            "target_paper_id": r["target_paper_id"],
+            "similarity_score": r["similarity_score"],
+            "similarity_type": r["similarity_type"],
+            "calculated_at": r["calculated_at"],
+        }
+        for r in rows
+    ]
+
+
+# --- Advanced Features: Category Stats ---
+
+def save_category_stats(
+    *,
+    category: str,
+    date_bucket: str,
+    paper_count: int,
+    top_authors: Optional[list[str]] = None,
+    hot_keywords: Optional[list[str]] = None,
+    db_path: Optional[Union[str, Path]] = None,
+) -> bool:
+    now = datetime.now(timezone.utc).isoformat()
+    with get_connection(db_path) as connection:
+        cursor = connection.execute(
+            """
+            INSERT OR REPLACE INTO category_stats (
+                category, date_bucket, paper_count, top_authors_json, hot_keywords_json, calculated_at
+            ) VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (
+                category, date_bucket, paper_count,
+                json.dumps(top_authors or []), json.dumps(hot_keywords or []), now
+            ),
+        )
+    return cursor.rowcount > 0
+
+
+def get_category_stats(
+    *,
+    category: str,
+    date_bucket: str,
+    db_path: Optional[Union[str, Path]] = None,
+) -> Optional[dict[str, Any]]:
+    with get_connection(db_path) as connection:
+        row = connection.execute(
+            """
+            SELECT category, date_bucket, paper_count, top_authors_json, hot_keywords_json, calculated_at
+            FROM category_stats
+            WHERE category = ? AND date_bucket = ?
+            LIMIT 1
+            """,
+            (category, date_bucket),
+        ).fetchone()
+    if not row:
+        return None
+    return {
+        "category": row["category"],
+        "date_bucket": row["date_bucket"],
+        "paper_count": row["paper_count"],
+        "top_authors": json.loads(row["top_authors_json"]),
+        "hot_keywords": json.loads(row["hot_keywords_json"]),
+        "calculated_at": row["calculated_at"],
     }

@@ -1,4 +1,4 @@
 <!-- SPECKIT START -->
-Plan: specs/011-separate-discover-view/plan.md
-Spec: specs/011-separate-discover-view/spec.md
+For additional context about technologies to be used, project structure,
+shell commands, and other important information, read the current plan
 <!-- SPECKIT END -->

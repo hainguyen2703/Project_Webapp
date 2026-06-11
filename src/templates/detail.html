@@ -1,32 +1,62 @@
 {% extends "base.html" %}
 
 {% block content %}
-  <section class="detail-panel">
-    <article>
-      <h2>{{ item.title }}</h2>
-      <p class="meta">{{ item.source_label }} • {{ item.published_at[:10] }}</p>
-      <p class="meta"><strong>Canonical ID:</strong> {{ item.id }}</p>
-      <p class="authors"><strong>Authors:</strong> {{ item.authors | join(', ') }}</p>
-      <p class="summary">{{ item.summary }}</p>
-      <p class="meta">
-        <strong>Category:</strong> {{ item.primary_category_label }}
-      </p>
-      <p class="source-link">
-        <a href="{{ item.url }}" target="_blank" rel="noopener">Open original source</a>
-      </p>
-      <div class="favourite-toggle">
-        {% if current_user.is_authenticated %}
-          <form method="post" action="{{ url_for('favourite_toggle') }}">
-            <input type="hidden" name="item_id" value="{{ item.id }}">
-            <input type="hidden" name="source" value="{{ source }}">
-            <button type="submit" class="heart-btn" title="{% if is_favourite %}Remove from favourites{% else %}Add to favourites{% endif %}">
-              {% if is_favourite %}♥{% else %}♡{% endif %}
-            </button>
-          </form>
-        {% else %}
-          <p class="meta">Sign in to save this paper to favourites.</p>
+  <div class="detail-layout">
+    <section class="detail-panel">
+      <article>
+        <h2>{{ item.title }}</h2>
+        <p class="meta">{{ item.source_label }} • {{ item.published_at[:10] }}</p>
+        
+        {% if score %}
+        <div style="margin: 10px 0;">
+          <strong>Worth Reading:</strong>
+          <div class="star-rating">
+            {% for i in range(5) %}
+              <span class="star {% if i < score_stars %}filled{% endif %}">★</span>
+            {% endfor %}
+            ({{ score.overall_score|round(1) }}/5)
+          </div>
+        </div>
         {% endif %}
-      </div>
-    </article>
-  </section>
+        
+        <p class="meta"><strong>Canonical ID:</strong> {{ item.id }}</p>
+        <p class="authors"><strong>Authors:</strong> {{ item.authors | join(', ') }}</p>
+        <p class="summary">{{ item.summary }}</p>
+        <p class="meta">
+          <strong>Category:</strong> {{ item.primary_category_label }}
+        </p>
+        <p class="source-link">
+          <a href="{{ item.url }}" target="_blank" rel="noopener">Open original source</a>
+        </p>
+        <div class="favourite-toggle">
+            {% if current_user.is_authenticated %}
+                <form id="favourite-form-{{ item.id }}" class="favourite-form">
+                    <input type="hidden" name="item_id" value="{{ item.id }}">
+                    <input type="hidden" name="source" value="{{ source }}">
+                    <button type="submit" class="heart-btn" data-item-id="{{ item.id }}" title="{% if is_favourite %}Remove from favourites{% else %}Add to favourites{% endif %}">
+                        <span class="heart-icon">{% if is_favourite %}♥{% else %}♡{% endif %}</span>
+                    </button>
+                </form>
+            {% else %}
+                <p class="meta">Sign in to save this paper to favourites.</p>
+            {% endif %}
+        </div>
+      </article>
+    </section>
+
+    <aside class="related-papers">
+        <h3>Related Papers</h3>
+        {% if related_papers %}
+            {% for related in related_papers %}
+                <div class="related-paper-item">
+                    <a href="{{ url_for('item_detail', item_id=related.id, source='arxiv') }}">
+                        {{ related.title }} {% if related.similarity != "Recent" %} ({{ related.similarity }}) {% endif %}
+                    </a>
+                </div>
+            {% endfor %}
+        {% else %}
+            <p style="color: #9ca3af;">No related papers found yet. Fetch some papers first!</p>
+        {% endif %}
+    </aside>
+  </div>
 {% endblock %}
