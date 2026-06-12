@@ -43,7 +43,7 @@ from src.services.advanced_service import (
 )
 from src.services.scheduler_service import SchedulerService
 
-
+#Khởi động trang web
 app = Flask(__name__, template_folder="templates", static_folder="static")
 app.secret_key = os.environ.get("SECRET_KEY", "dev-only-insecure-key-change-in-prod")
 
@@ -901,21 +901,18 @@ def favourites_page():
 
     return render_template("favourites.html", favourites=favourites)
 
-
+#Route này sử dụng method POST => Đẩy dữ liệu
 @app.route("/favourite/remove", methods=["POST"])
 def favourite_remove():
-    if not current_user.is_authenticated:
-        abort(404)
-
     source, item_id = _canonical_source_and_id(
         request.form.get("source", "arxiv"),
         request.form.get("item_id", ""),
     )
+
+    #Lấy user id
     user_id = _current_user_id()
 
-    if user_id is None:
-        abort(404)
-
+    #Nếu item_id hợp lệ thì xóa khỏi favourite
     if item_id:
         remove_favourite(
             user_id=user_id,
@@ -924,7 +921,8 @@ def favourite_remove():
             db_path=_auth_db_path(),
         )
 
-    return redirect(url_for("favourites_page"))
+    return jsonify({"success": True, "item_id": item_id})
+    #return redirect(url_for("favourites_page"))
 
 
 if __name__ == "__main__":
