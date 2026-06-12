@@ -860,7 +860,6 @@ def favourite_toggle():
     if user_id is None:
         return jsonify({"error": "Not logged in"}), 401
 
-    is_favourite = False
     if favourite_exists(
         user_id=user_id,
         source=source,
@@ -883,9 +882,8 @@ def favourite_toggle():
                 paper=paper,
                 db_path=_auth_db_path(),
             )
-            is_favourite = True
 
-    return jsonify({"item_id": item_id, "is_favourite": is_favourite})
+    return redirect(url_for("item_detail", item_id=item_id, source=source))
 
 
 @app.route("/favourites")

@@ -30,11 +30,11 @@
         </p>
         <div class="favourite-toggle">
             {% if current_user.is_authenticated %}
-                <form id="favourite-form-{{ item.id }}" class="favourite-form">
-                    <input type="hidden" name="item_id" value="{{ item.id }}">
-                    <input type="hidden" name="source" value="{{ source }}">
-                    <button type="submit" class="heart-btn" data-item-id="{{ item.id }}" title="{% if is_favourite %}Remove from favourites{% else %}Add to favourites{% endif %}">
-                        <span class="heart-icon">{% if is_favourite %}♥{% else %}♡{% endif %}</span>
+          <form method="post" action="{{ url_for('favourite_toggle') }}">
+            <input type="hidden" name="item_id" value="{{ item.id }}">
+            <input type="hidden" name="source" value="{{ source }}">
+            <button type="submit" class="heart-btn" title="{% if is_favourite %}Remove from favourites{% else %}Add to favourites{% endif %}">
+              {% if is_favourite %}♥{% else %}♡{% endif %}
                     </button>
                 </form>
             {% else %}

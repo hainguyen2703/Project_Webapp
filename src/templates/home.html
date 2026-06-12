@@ -95,16 +95,6 @@
               <p class="authors">{{ item.authors | join(', ') }}</p>
               <p class="summary">{{ item.summary }}</p>
               <a class="detail-link" href="{{ url_for('item_detail', item_id=item.id, source='arxiv') }}">View details</a>
-              
-              {% if current_user.is_authenticated %}
-                <form id="favourite-form-{{ item.id }}" class="favourite-form" style="margin-top: 8px;">
-                  <input type="hidden" name="item_id" value="{{ item.id }}">
-                  <input type="hidden" name="source" value="arxiv">
-                  <button type="submit" class="heart-btn" data-item-id="{{ item.id }}" title="{% if item.is_favourite %}Remove from favourites{% else %}Add to favourites{% endif %}">
-                    <span class="heart-icon">{% if item.is_favourite %}♥{% else %}♡{% endif %}</span>
-                  </button>
-                </form>
-              {% endif %}
             </article>
           {% endfor %}
         </div>
