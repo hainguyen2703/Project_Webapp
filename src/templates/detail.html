@@ -58,5 +58,37 @@
             <p style="color: #9ca3af;">No related papers found yet. Fetch some papers first!</p>
         {% endif %}
     </aside>
+
+    <script>
+    document.addEventListener("DOMContentLoaded", () => {
+        const form = document.querySelector(".favourite-toggle form");
+        if (!form) return;
+
+        form.addEventListener("submit", async (e) => {
+            e.preventDefault(); // chặn reload
+
+            const formData = new FormData(form);
+
+            const res = await fetch(form.action, {
+                method: "POST",
+                body: formData,
+                headers: { "X-Requested-With": "XMLHttpRequest" }
+            });
+
+            const data = await res.json();
+
+            // cập nhật icon ♥ / ♡
+            const btn = form.querySelector("button");
+            if (data.favourited) {
+                btn.textContent = "♥";
+                btn.title = "Remove from favourites";
+            } else {
+                btn.textContent = "♡";
+                btn.title = "Add to favourites";
+            }
+        });
+    });
+    </script>
+
   </div>
 {% endblock %}

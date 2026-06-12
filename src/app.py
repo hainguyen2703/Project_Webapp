@@ -855,17 +855,17 @@ def favourite_toggle():
     )
     if not item_id:
         return jsonify({"error": "No item ID"}), 400
-
+    
     user_id = _current_user_id()
-    if user_id is None:
-        return jsonify({"error": "Not logged in"}), 401
 
-    if favourite_exists(
+    existed = favourite_exists(
         user_id=user_id,
         source=source,
         external_paper_id=item_id,
         db_path=_auth_db_path(),
-    ):
+    )  
+
+    if existed:
         remove_favourite(
             user_id=user_id,
             source=source,
@@ -882,7 +882,12 @@ def favourite_toggle():
                 paper=paper,
                 db_path=_auth_db_path(),
             )
+    
+    # Nếu là AJAX → trả JSON
+    if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return jsonify({"status": "ok", "favourited": not existed})
 
+    # Nếu không phải AJAX → fallback redirect
     return redirect(url_for("item_detail", item_id=item_id, source=source))
 
 
