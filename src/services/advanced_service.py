@@ -46,7 +46,7 @@ def calculate_recency_score(published_at_str: str) -> float:
     except Exception:
         return 2.5
 
-
+#Hàm đánh giá điểm của paper dựa theo độ tương thích với các chủ đề quan tâm của 1 user cụ thể
 def calculate_relevance_score(paper_categories: List[str], user_interest_keys: List[str]) -> float:
     """Calculate relevance score from 0 to 5 based on category match"""
     if not user_interest_keys or not paper_categories:
@@ -57,16 +57,17 @@ def calculate_relevance_score(paper_categories: List[str], user_interest_keys: L
     score = (overlap / max(len(user_cat_set), 1)) * 5.0
     return min(max(score, 0.0), 5.0)
 
-
+#Đánh giá dựa trên các chủ đề hot, nếu paper thuộc vào chủ đề hot sẽ điểm cao
 def calculate_popularity_score(category: Optional[str]) -> float:
     """Calculate popularity score from 0 to 5 based on category size"""
     # For MVP, use fixed scores based on category type
-    popular_categories = {"cs.AI", "cs.LG", "cs.CV", "cs.CL", "stat.ML"}
+    popular_categories = {"cs.AI", "cs.LG", "cs.CV", "cs.CL", "cs.se"}
     if category in popular_categories:
         return 4.5
     return 2.5
 
-
+#Hàm tính toán điểm đáng đọc của paper đối với user
+#Nghĩa là điểm số được customize theo user, không phản ánh general
 def calculate_worth_reading_score(
     published_at: str,
     paper_categories: List[str],
@@ -74,10 +75,11 @@ def calculate_worth_reading_score(
     primary_category: Optional[str] = None
 ) -> Dict[str, float]:
     """Calculate overall worth reading score and components"""
-    recency = calculate_recency_score(published_at)
-    relevance = calculate_relevance_score(paper_categories, user_interest_keys)
-    popularity = calculate_popularity_score(primary_category)
-    overall = 0.4 * recency + 0.35 * relevance + 0.25 * popularity
+    recency = calculate_recency_score(published_at) #Lấy điểm theo độ mới (ngày viết) của paper
+    relevance = calculate_relevance_score(paper_categories, user_interest_keys) #Lấy điểm theo tương thích với sở thích của user
+    popularity = calculate_popularity_score(primary_category) #Lấy điểm của paper theo chủ đề hot
+    #Tính điểm: ưu tiên đúng chủ đề quan tâm, chủ đề hot, ngày viêt
+    overall = 0.25 * recency + 0.4 * relevance + 0.35 * popularity
     return {
         "overall_score": overall,
         "recency_score": recency,

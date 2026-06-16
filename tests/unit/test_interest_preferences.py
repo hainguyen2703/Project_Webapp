@@ -55,7 +55,7 @@ def test_reconcile_does_not_autofill_when_onboarding_incomplete(db_path: Path) -
 
     reconciled = reconcile_user_interests(user_id=user_id, minimum_count=3, db_path=db_path)
 
-    assert reconciled == list_user_interest_keys(user_id=user_id, active_only=True, db_path=db_path)
+    assert reconciled == list_user_interest_keys(user_id=user_id, db_path=db_path)
     assert len(reconciled) == 1
     assert is_onboarding_completed(user_id=user_id, db_path=db_path) is False
 

@@ -65,17 +65,6 @@
             </script>
         </section>
 
-  {% if used_default_interest_query and active_interest_labels %}
-    <section class="status-message success">
-      <p>Discover defaults are using your interests.</p>
-      <p>
-        {% for topic in active_interest_labels %}
-          <span>{{ topic.label }}</span>{% if not loop.last %}, {% endif %}
-        {% endfor %}
-      </p>
-    </section>
-  {% endif %}
-
   {% if backfill_applied %}
     <section class="status-message">
       <p>Showing direct interest matches first, then broader recent papers to fill your Discover feed.</p>
