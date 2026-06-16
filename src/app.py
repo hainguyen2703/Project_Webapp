@@ -82,7 +82,7 @@ def _ensure_registration_session_key() -> str:
         session["registration_session_key"] = secrets.token_urlsafe(24)
     return session["registration_session_key"]
 
-
+'''Hàm chuẩn hóa raw id của arxiv paper'''
 def _normalize_item_id(raw_id: str) -> str:
     normalized = extract_arxiv_id(raw_id)
     if normalized:
@@ -98,9 +98,9 @@ def _current_user_id() -> int | None:
         return None
     return int(user_id)
 
-
+#Hàm chuẩn hóa source và paper id của arxiv
 def _canonical_source_and_id(source: str, item_id: str) -> tuple[str, str]:
-    canonical_source = (source or "arxiv").strip().lower() or "arxiv"
+    canonical_source = (source or "arxiv").strip().lower() or "arxiv"   #Từ input, nếu input rỗng thì trả về arxiv, nếu không thì xóa khoảng trắng và chuyển lowercase
     return canonical_source, _normalize_item_id(item_id)
 
 
@@ -116,7 +116,7 @@ def _find_paper_in_latest_results(source: str, external_paper_id: str) -> dict[s
 
 
 def _discovery_routes() -> set[str]:
-    return {"discover_page", "api_listings", "item_detail"}
+    return {"discover_page"}
 
 
 def _normalize_interest_keys(raw_keys: list[str]) -> list[str]:
@@ -370,6 +370,7 @@ def refresh_auth_session_before_request() -> None:
     endpoint = request.endpoint or ""
     if endpoint in _discovery_routes() and not is_onboarding_completed(user_id=user_id, db_path=_auth_db_path()):
         return redirect(url_for("onboarding_interests_page"))
+
 
 
 @app.context_processor
@@ -719,18 +720,21 @@ def interests_submit() -> str:
     )
     return redirect(url_for("interests_page"))
 
-
+#Hàm xem detail của 1 paper
 @app.route("/detail/<path:item_id>")
 def item_detail(item_id: str) -> str:
     source, normalized_item_id = _canonical_source_and_id(
         request.args.get("source", "arxiv"),
         item_id,
     )
-    items = LATEST_RESULTS.get(source, [])
+    #Lấy các list dict với key là source, trả về list rỗng nếu không thấy key source
+    items = LATEST_RESULTS.get(source, [])  #Rút data từ lần search mới nhất trong cache
     item = next((item for item in items if _normalize_item_id(str(item.get("id", ""))) == normalized_item_id), None)
 
     # Fallback to favourites if not in latest results
     user_id = _current_user_id()
+    #Nếu không tìm thấy paper trong Cache mới nhất thì tìm trong database (nếu có)
+    #Từ table favourite của user_id, lấy thông tin về paper
     if item is None and user_id is not None:
         item = get_favourite(
             user_id=user_id,
@@ -740,6 +744,7 @@ def item_detail(item_id: str) -> str:
         )
 
     # Fallback to fetching from arXiv directly
+    #Nếu không có cả 2 case trên, thì buộc fetch từ arxiv
     if item is None:
         from src.clients.arxiv_client import fetch_single_paper
         item = fetch_single_paper(normalized_item_id)
@@ -757,17 +762,18 @@ def item_detail(item_id: str) -> str:
                 categories=item["metadata"]["categories"],
                 metadata=item["metadata"]
             )
-
+    #Trả về error nếu không thể tìm thấy paper
     if item is None:
         abort(404)
 
-    item = dict(item)
+    item = dict(item)   #Tạo bản sao của item để không override data khi chỉnh sửa.
     item["id"] = normalized_item_id
     item["source"] = source
 
     # Check if paper is favourited
     is_favourite = False
     if user_id is not None:
+        #Kiểm tra nếu paper id có nằm trong list favourite của user_id trong database
         is_favourite = favourite_exists(
             user_id=user_id,
             source=source,
@@ -775,6 +781,8 @@ def item_detail(item_id: str) -> str:
             db_path=_auth_db_path(),
         )
     
+    #Tách lấy primary_category của item (nếu có)
+    #Lý do lấy primary_category thay vì category là: 1 paper có thể có nhiều category nhưng chỉ có 1 primary_category
     primary_category = item.get("metadata", {}).get("primary_category", "").lower()
     item["primary_category_label"] = get_interest_label(primary_category)        
 
@@ -890,23 +898,27 @@ def favourite_toggle():
     # Nếu không phải AJAX → fallback redirect
     return redirect(url_for("item_detail", item_id=item_id, source=source))
 
-
+#Hàm xử lý khi user click favourite trong hamberger menu
 @app.route("/favourites")
 def favourites_page():
     user_id = _current_user_id()
     if user_id is None:
         abort(404)
-
+    
+    #Lấy danh sách các favourite papers của user
     favourites = list_favourites(user_id=user_id, db_path=_auth_db_path())
 
+    #Render theo template favourite.html
     return render_template("favourites.html", favourites=favourites)
 
 #Route này sử dụng method POST => Đẩy dữ liệu
 @app.route("/favourite/remove", methods=["POST"])
 def favourite_remove():
+    #Tách source - tên nguồn. Hiện tại chỉ có arxiv
+    #Tách id của source page. Hiện tại là arxiv paper id
     source, item_id = _canonical_source_and_id(
-        request.form.get("source", "arxiv"),
-        request.form.get("item_id", ""),
+        request.form.get("source", "arxiv"),    #Từ form của HTML, lấy giá trị source, nếu không có thì mặc định arxiv
+        request.form.get("item_id", ""),        #Từ form của HTML, lấy giá trị item_id, nếu không có thì mặc định rỗng
     )
 
     #Lấy user id
@@ -920,9 +932,8 @@ def favourite_remove():
             external_paper_id=item_id,
             db_path=_auth_db_path(),
         )
-
+    #Trả về cho client 1 JSON file
     return jsonify({"success": True, "item_id": item_id})
-    #return redirect(url_for("favourites_page"))
 
 
 if __name__ == "__main__":

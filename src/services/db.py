@@ -6,8 +6,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional, Union
 
+#Đường dẫn đến nơi chứa database
 DB_PATH = Path(__file__).resolve().parents[1] / "data" / "app.db"
 
+#List chứa các dict: dùng để map từ keyword của category sang full name của category
 INTEREST_CATALOG: list[dict[str, Any]] = [
     {"key": "cs.ai", "label": "Artificial Intelligence", "is_default": 1, "sort_order": 10},
     {"key": "cs.cl", "label": "Computation and Language", "is_default": 1, "sort_order": 20},
@@ -45,13 +47,14 @@ INTEREST_CATALOG: list[dict[str, Any]] = [
     {"key": "cs.ms", "label": "Mathematical Software", "is_default": 0, "sort_order": 340},
     {"key": "cs.pf", "label": "Performance", "is_default": 0, "sort_order": 350},
     {"key": "cs.sc", "label": "Symbolic Computation", "is_default": 0, "sort_order": 360},
+    {"key": "math.lo", "label": "Mathematical Logic", "is_default": 0, "sort_order": 370},
 ]
 
 
 
-
+'''Hàm kết nối tới SQLite'''
 def get_connection(db_path: Optional[Union[str, Path]] = None) -> sqlite3.Connection:
-    path = Path(db_path) if db_path else DB_PATH
+    path = Path(db_path) if db_path else DB_PATH    #Nếu input không có db, thì dùng db mặc định DB_PATH
     path.parent.mkdir(parents=True, exist_ok=True)
     connection = sqlite3.connect(path)
     connection.row_factory = sqlite3.Row
@@ -367,7 +370,7 @@ def bump_session_version(
         return 0
     return int(row["session_version"])
 
-
+#Hàm kiểm tra trong database đã tồn tại favourite paper input chưa
 def favourite_exists(
     *,
     user_id: int,
@@ -376,6 +379,8 @@ def favourite_exists(
     db_path: Optional[Union[str, Path]] = None,
 ) -> bool:
     with get_connection(db_path) as connection:
+        #Ý nghĩa của câu query bên dưới: Từ table "favourite_items", tìm các row thỏa điều kiện WHERE, trả về 1 nếu có
+        #Note: Chỉ kiểm tra Yes/NO nên không cần SELECT *. Lý do: tối ưu tốc độ
         row = connection.execute(
             """
             SELECT 1
@@ -385,7 +390,7 @@ def favourite_exists(
             """,
             (user_id, source, external_paper_id),
         ).fetchone()
-    return row is not None
+    return row is not None #Trả về TRUE: nếu có, FALSE nếu không có.
 
 
 def add_favourite(
@@ -433,15 +438,16 @@ def add_favourite(
         )
     return cursor.rowcount > 0
 
-
+'''Hàm xóa 1 favourite page khỏi list favourite'''
 def remove_favourite(
-    *,
+    *,                  #Bắt buộc các tham số phía sau phải truyền bằng tên tham số
     user_id: int,
     source: str,
     external_paper_id: str,
     db_path: Optional[Union[str, Path]] = None,
 ) -> bool:
     with get_connection(db_path) as connection:
+        #Thực hiện xóa bản ghi với điều kiện: From table favourite_item, thỏa điều kiện trùng với user_id, source và paper_id.
         cursor = connection.execute(
             """
             DELETE FROM favourite_items
@@ -451,7 +457,7 @@ def remove_favourite(
         )
     return cursor.rowcount > 0
 
-
+#Hàm trả về paper trong list favourite của user
 def get_favourite(
     *,
     user_id: int,
@@ -460,6 +466,7 @@ def get_favourite(
     db_path: Optional[Union[str, Path]] = None,
 ) -> Optional[dict[str, Any]]:
     with get_connection(db_path) as connection:
+        #Query: Từ table "favourite_items", tìm paper match với user_id, source arxiv và paper id
         row = connection.execute(
             """
             SELECT source, external_paper_id, title, authors_json, summary, url, published_at, source_label, created_at
@@ -469,10 +476,11 @@ def get_favourite(
             """,
             (user_id, source, external_paper_id),
         ).fetchone()
-
+    
     if row is None:
         return None
 
+    #Return 1 paper duy nhất vì paper id là unique
     return {
         "id": row["external_paper_id"],
         "source": row["source"],
@@ -485,13 +493,14 @@ def get_favourite(
         "created_at": row["created_at"],
     }
 
-
+#Hàm trả về danh sách các paper yêu thích của user từ database
 def list_favourites(
     *,
     user_id: int,
     db_path: Optional[Union[str, Path]] = None,
 ) -> list[dict[str, Any]]:
     with get_connection(db_path) as connection:
+        #Query database: FROM favourite, lấy các thông tin của user id (key), sau đó sắp xếp theo ngày mới -> cũ
         rows = connection.execute(
             """
             SELECT source, external_paper_id, title, authors_json, summary, url, published_at, source_label, created_at
@@ -545,13 +554,14 @@ def delete_user_account(
         )
     return cursor.rowcount > 0
 
-
+#Hàm convert từ category key sang label của category
+#Nghĩa là conver từ keyword viêt tắt sang tên đầy đủ của category
 def get_interest_label(key: str) -> str:
     key = key.lower()
     for item in INTEREST_CATALOG:
         if item["key"] == key:
-            return item["label"]
-    return key  # fallback
+            return item["label"]    #Trả về label nếu tìm thấy
+    return key  # Trả về key -> Vì arxiv có quá nhiều key nên không thể add hết được
 
 
 def list_interest_topics(
@@ -667,7 +677,7 @@ def set_user_interest_preferences(
                 (user_id, key, timestamp),
             )
 
-
+#Hàm xóa các chủ đề interest của user nhưng chủ đề đã không còn active
 def cleanup_retired_interests_for_user(
     *,
     user_id: int,
@@ -728,6 +738,7 @@ def reconcile_user_interests(
     minimum_count: int,
     db_path: Optional[Union[str, Path]] = None,
 ) -> list[str]:
+    #Xóa các topic được yêu thích nhưng không còn active nữa
     cleanup_retired_interests_for_user(user_id=user_id, db_path=db_path)
     if not is_onboarding_completed(user_id=user_id, db_path=db_path):
         return list_user_interest_keys(user_id=user_id, active_only=True, db_path=db_path)

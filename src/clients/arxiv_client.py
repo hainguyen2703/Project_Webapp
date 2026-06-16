@@ -15,6 +15,8 @@ REQUEST_TIMEOUT_SECONDS = 30
 CACHE: dict[str, tuple[float, List[PaperArticle]]] = {}
 CACHE_EXPIRY_SECONDS = 3600  # 1 hour
 
+'''Pattern refernce cho arxiv ID
+Có 2 pattern tương ứng cho ID kiểu cũ và mới'''
 _ARXIV_ID_PATTERNS = [
     re.compile(r"(\d{4}\.\d{4,5}(?:v\d+)?)$"),
     re.compile(r"([a-z\-]+(?:\.[A-Z]{2})?/\d{7}(?:v\d+)?)$", re.IGNORECASE),
@@ -102,7 +104,7 @@ def _parse_iso(timestamp: object) -> str:
     except ValueError:
         return datetime.datetime.now(datetime.timezone.utc).isoformat()
 
-
+''' Hàm lấy raw_id của 1 paper arxiv'''
 def extract_arxiv_id(raw_id: str) -> Optional[str]:
     if not raw_id:
         return None
@@ -110,11 +112,13 @@ def extract_arxiv_id(raw_id: str) -> Optional[str]:
     cleaned = raw_id.strip()
     cleaned = cleaned.split("?")[0].rstrip("/")
 
+    #Loop qua các pattern của arxiv
     for pattern in _ARXIV_ID_PATTERNS:
-        match = pattern.search(cleaned)
+        match = pattern.search(cleaned) #Kiểm tra nếu pattern trùng với raw_id
         if match:
             return match.group(1)
-
+    
+    #Không trùng gì hết thì return None
     return None
 
 
@@ -204,7 +208,7 @@ def fetch_arxiv_articles(limit: int = 50, query: Optional[str] = None, timeout_s
     CACHE[cache_key] = (current_time, results)
     return results
 
-
+#Hàm fetch 1 paper cụ thể từ arxiv. Dựa vào paper id input
 def fetch_single_paper(arxiv_id: str) -> Optional[dict]:
     """Fetch a single paper from arXiv by ID, return as a dict."""
     try:
