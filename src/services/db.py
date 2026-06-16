@@ -563,20 +563,18 @@ def get_interest_label(key: str) -> str:
             return item["label"]    #Trả về label nếu tìm thấy
     return key  # Trả về key -> Vì arxiv có quá nhiều key nên không thể add hết được
 
-
+#Hàm query danh sách các interest topic trong database
+#Return: List các key-value, với key là key trong database và value là label của key
 def list_interest_topics(
-    *,
-    active_only: bool = True,
     db_path: Optional[Union[str, Path]] = None,
 ) -> list[dict[str, Any]]:
     query = """
         SELECT key, label, is_active, is_default, sort_order
         FROM interest_topics
+        WHERE is_active = 1
+        ORDER BY sort_order ASC, label ASC
     """
     params: tuple[Any, ...] = ()
-    if active_only:
-        query += " WHERE is_active = 1"
-    query += " ORDER BY sort_order ASC, label ASC"
 
     with get_connection(db_path) as connection:
         rows = connection.execute(query, params).fetchall()
@@ -608,11 +606,10 @@ def list_default_interest_keys(
         ).fetchall()
     return [str(row["key"]) for row in rows]
 
-
+#Hàm query danh sách các topic mà user đang follow
 def list_user_interest_keys(
     *,
     user_id: int,
-    active_only: bool = True,
     db_path: Optional[Union[str, Path]] = None,
 ) -> list[str]:
     query = """
@@ -620,17 +617,16 @@ def list_user_interest_keys(
         FROM user_interest_selections s
         JOIN interest_topics t ON t.key = s.interest_key
         WHERE s.user_id = ?
+        AND t.is_active = 1
+        ORDER BY t.sort_order ASC, t.label ASC
     """
     params: list[Any] = [user_id]
-    if active_only:
-        query += " AND t.is_active = 1"
-    query += " ORDER BY t.sort_order ASC, t.label ASC"
 
     with get_connection(db_path) as connection:
         rows = connection.execute(query, tuple(params)).fetchall()
     return [str(row["interest_key"]) for row in rows]
 
-
+#Hàm kiểm tra xem user đã hoàn thành việc chọn interest topics chưa
 def is_onboarding_completed(
     *,
     user_id: int,
@@ -703,7 +699,7 @@ def autofill_default_interests_if_needed(
     minimum_count: int,
     db_path: Optional[Union[str, Path]] = None,
 ) -> list[str]:
-    current = list_user_interest_keys(user_id=user_id, active_only=True, db_path=db_path)
+    current = list_user_interest_keys(user_id=user_id, db_path=db_path)
     if len(current) >= minimum_count:
         return current
 
@@ -711,7 +707,7 @@ def autofill_default_interests_if_needed(
     for key in list_default_interest_keys(db_path=db_path):
         if key not in candidate_keys:
             candidate_keys.append(key)
-    for topic in list_interest_topics(active_only=True, db_path=db_path):
+    for topic in list_interest_topics(db_path):
         key = str(topic["key"])
         if key not in candidate_keys:
             candidate_keys.append(key)
@@ -729,7 +725,7 @@ def autofill_default_interests_if_needed(
         onboarding_completed=True,
         db_path=db_path,
     )
-    return list_user_interest_keys(user_id=user_id, active_only=True, db_path=db_path)
+    return list_user_interest_keys(user_id=user_id, db_path=db_path)
 
 
 def reconcile_user_interests(
@@ -741,7 +737,7 @@ def reconcile_user_interests(
     #Xóa các topic được yêu thích nhưng không còn active nữa
     cleanup_retired_interests_for_user(user_id=user_id, db_path=db_path)
     if not is_onboarding_completed(user_id=user_id, db_path=db_path):
-        return list_user_interest_keys(user_id=user_id, active_only=True, db_path=db_path)
+        return list_user_interest_keys(user_id=user_id, db_path=db_path)
     return autofill_default_interests_if_needed(
         user_id=user_id,
         minimum_count=minimum_count,
@@ -755,13 +751,13 @@ def load_effective_interest_context(
     minimum_count: int,
     db_path: Optional[Union[str, Path]] = None,
 ) -> dict[str, Any]:
-    before_keys = list_user_interest_keys(user_id=user_id, active_only=False, db_path=db_path)
+    before_keys = list_user_interest_keys(user_id=user_id, db_path=db_path)
     effective_keys = reconcile_user_interests(
         user_id=user_id,
         minimum_count=minimum_count,
         db_path=db_path,
     )
-    active_keys = set(list_user_interest_keys(user_id=user_id, active_only=True, db_path=db_path))
+    active_keys = set(list_user_interest_keys(user_id=user_id, db_path=db_path))
     retired_keys = [key for key in before_keys if key not in active_keys]
 
     return {

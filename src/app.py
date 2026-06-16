@@ -124,7 +124,7 @@ def _normalize_interest_keys(raw_keys: list[str]) -> list[str]:
 
 
 def _active_interest_key_set() -> set[str]:
-    return {topic["key"] for topic in list_interest_topics(active_only=True, db_path=_auth_db_path())}
+    return {topic["key"] for topic in list_interest_topics(_auth_db_path())}
 
 
 def _validate_interest_selection(interest_keys: list[str]) -> tuple[bool, str | None]:
@@ -625,11 +625,13 @@ def onboarding_interests_page() -> str:
     if user_id is None:
         return redirect(url_for("login_page"))
 
+    #Kiểm tra nếu user đã hoàn thành việc chọn interest topics
+    #Nếu đã hoàn thành thì di chuyển về home
     if is_onboarding_completed(user_id=user_id, db_path=_auth_db_path()):
         return redirect(url_for("home"))
 
-    topics = list_interest_topics(active_only=True, db_path=_auth_db_path())
-    selected_keys = list_user_interest_keys(user_id=user_id, active_only=True, db_path=_auth_db_path())
+    topics = list_interest_topics(_auth_db_path())  #Lấy danh sách các topic hiện có
+    selected_keys = list_user_interest_keys(user_id=user_id, db_path=_auth_db_path())   #Lấy danh sách các topic mà user đang follow
     return render_template(
         "onboarding_interests.html",
         topics=topics,
@@ -654,7 +656,7 @@ def onboarding_interests_submit() -> str:
     if not valid:
         return render_template(
             "onboarding_interests.html",
-            topics=list_interest_topics(active_only=True, db_path=_auth_db_path()),
+            topics=list_interest_topics(_auth_db_path()),
             selected_keys=selected,
             min_interests=MIN_INTERESTS,
             max_interests=MAX_INTERESTS,
@@ -683,8 +685,8 @@ def interests_page() -> str:
 
     return render_template(
         "interests.html",
-        topics=list_interest_topics(active_only=True, db_path=_auth_db_path()),
-        selected_keys=list_user_interest_keys(user_id=user_id, active_only=True, db_path=_auth_db_path()),
+        topics=list_interest_topics(_auth_db_path()),
+        selected_keys=list_user_interest_keys(user_id=user_id, db_path=_auth_db_path()),
         min_interests=MIN_INTERESTS,
         max_interests=MAX_INTERESTS,
         error_message=None,
@@ -705,7 +707,7 @@ def interests_submit() -> str:
     if not valid:
         return render_template(
             "interests.html",
-            topics=list_interest_topics(active_only=True, db_path=_auth_db_path()),
+            topics=list_interest_topics(_auth_db_path()),
             selected_keys=selected,
             min_interests=MIN_INTERESTS,
             max_interests=MAX_INTERESTS,

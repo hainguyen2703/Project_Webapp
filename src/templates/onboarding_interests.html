@@ -2,7 +2,7 @@
 
 {% block content %}
 <section class="content">
-  <h2>Choose your interests</h2>
+  <h2>Please choose your interests</h2>
   <p>Select between {{ min_interests }} and {{ max_interests }} interests to continue.</p>
 
   {% if error_message %}
@@ -12,18 +12,19 @@
   {% endif %}
 
   <form method="post" action="{{ url_for('onboarding_interests_submit') }}">
-    <div class="cards">
+    <div class="cards interest-grid">
       {% for topic in topics %}
-        <label class="card" for="interest-{{ topic.key }}">
+        <label class="card interest-option" for="interest-{{ topic.key }}">
           <input
             id="interest-{{ topic.key }}"
             type="checkbox"
             name="interest_keys"
             value="{{ topic.key }}"
+            class="interest-checkbox"
             {% if topic.key in selected_keys %}checked{% endif %}
           />
+          <span class="icon"></span>
           <strong>{{ topic.label }}</strong>
-          <p class="meta">{{ topic.key }}</p>
         </label>
       {% endfor %}
     </div>
