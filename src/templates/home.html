@@ -46,23 +46,6 @@
                     <a class="clear-btn" href="{{ clear_url }}">Clear</a>
                 </div>      
             </form>
-            
-            <!-- Auto-search on select from datalist -->
-            <script>
-                document.getElementById('query').addEventListener('input', function(e) {
-                    const input = e.target;
-                    const list = document.getElementById('search-history-list');
-                    const options = list.querySelectorAll('option');
-                    
-                    for (let opt of options) {
-                        if (opt.value === input.value) {
-                            // Submit the form to auto-search
-                            document.getElementById('search-form').submit();
-                            break;
-                        }
-                    }
-                });
-            </script>
         </section>
 
   {% if backfill_applied %}
@@ -74,7 +57,6 @@
   {% if result %}
     {% if result.status == 'success' %}
       <section class="results">
-        <h2>Results from arXiv</h2>
         <div class="cards">
           {% for item in result['items'] %}
             <article class="card">
@@ -113,9 +95,6 @@
     {% elif result.status == 'empty' %}
       <section class="status-message">
         <p>No results were found for this source.</p>
-        {% if used_default_interest_query %}
-          <p>Try updating your interests or running a manual search to broaden discovery.</p>
-        {% endif %}
       </section>
     {% else %}
       <section class="status-message error">
