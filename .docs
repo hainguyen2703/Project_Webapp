@@ -1,0 +1,679 @@
+# Tài Liệu Dự Án
+
+## 1. Dự Án Này Là Gì
+
+Đây là một ứng dụng web viết bằng Python Flask dùng để tìm kiếm và khám phá các bài báo học thuật từ arXiv.
+
+Ở mức tổng quát, ứng dụng cho phép người dùng:
+
+- tìm kiếm các bài báo mới từ arXiv
+- đăng ký tài khoản và đăng nhập
+- chọn các chủ đề quan tâm
+- nhận được trang khám phá được cá nhân hóa hơn
+- lưu bài báo vào danh sách yêu thích
+- mở trang chi tiết của từng bài báo
+- xem một số thống kê đơn giản từ dữ liệu bài báo đã lưu
+- nhận thông báo khi có bài báo mới phù hợp với sở thích
+
+Mặc dù dự án có cả frontend và backend, nó không được tách thành hai ứng dụng riêng biệt.
+Đây là một ứng dụng Flask đơn khối, vừa render HTML ở phía server vừa cung cấp một số API endpoint trả về JSON.
+
+## 2. Công Nghệ Chính
+
+- Framework backend: Flask
+- Xác thực đăng nhập: Flask-Login
+- Lưu trữ dữ liệu: SQLite
+- Nguồn dữ liệu bên ngoài: arXiv Python client
+- Tác vụ nền: APScheduler
+- Hỗ trợ similarity và analytics: scikit-learn và pandas
+- Kiểm thử: pytest
+
+Danh sách dependency nằm trong `requirements.txt`.
+
+## 3. Kiến Trúc Tổng Thể
+
+Có thể hiểu dự án này là một web app render giao diện ở phía server, trong đó backend được tích hợp chung trong cùng một ứng dụng.
+
+Những thành phần chính gồm:
+
+- `src/app.py`
+  Đây là điểm vào chính của hệ thống và đóng vai trò điều phối trung tâm. File này định nghĩa route, luồng xử lý request, quản lý session, đăng nhập, render trang và trả API response.
+- `src/templates/`
+  Đây là lớp hiển thị frontend. Flask sẽ render các template HTML này ở server rồi gửi sang trình duyệt.
+- `src/static/`
+  Chứa tài nguyên frontend như CSS.
+- `src/services/`
+  Chứa business logic và logic thao tác dữ liệu.
+- `src/clients/`
+  Chứa phần tích hợp với hệ thống bên ngoài, hiện tại là arXiv.
+- `src/models/`
+  Chứa các model dữ liệu để chuẩn hóa cấu trúc thông tin trong ứng dụng.
+- `src/data/app.db`
+  Đây là file SQLite database được tạo và sử dụng trong lúc ứng dụng chạy.
+- `tests/`
+  Chứa test integration và unit test.
+
+## 4. Frontend, Backend Và API Trong Dự Án Này
+
+### Frontend
+
+Trong dự án này, frontend là phần mà trình duyệt hiển thị và thực thi:
+
+- các file HTML trong `src/templates/`
+- CSS trong `src/static/styles.css`
+- một số đoạn JavaScript nhỏ nhúng trong template để xử lý AJAX như toggle favourite hoặc dismiss notification
+
+Frontend ở đây không phải là một ứng dụng React hay Vue riêng biệt.
+Thay vào đó, Flask sử dụng Jinja template để render HTML trước rồi gửi trực tiếp cho trình duyệt.
+
+### Backend
+
+Trong dự án này, backend là toàn bộ phần code Python chạy ở server để:
+
+- nhận HTTP request
+- kiểm tra dữ liệu từ form
+- gọi arXiv
+- đọc và ghi dữ liệu SQLite
+- xử lý đăng nhập và xác thực
+- cá nhân hóa kết quả
+- tính bài liên quan và thống kê
+- trả trang HTML hoặc JSON
+
+Phần lớn logic backend nằm trong:
+
+- `src/app.py`
+- `src/services/*.py`
+- `src/clients/*.py`
+- `src/models/*.py`
+
+### API
+
+Trong dự án này, API là các route trả dữ liệu cho máy đọc được thay vì trả một trang HTML hoàn chỉnh.
+
+Endpoint API rõ nhất là:
+
+- `/api/listings`
+
+Route này trả về kết quả tìm kiếm dạng JSON cho một source như arXiv.
+
+Ngoài ra còn có một số POST endpoint kiểu AJAX được frontend sử dụng:
+
+- `/favourite/toggle`
+- `/favourite/remove`
+- `/notification/<id>/dismiss`
+
+Đây không phải là một lớp REST API đầy đủ tách riêng.
+Chúng là các endpoint phụ trợ nằm trong cùng một web app.
+
+## 5. Các Hoạt Động Chung Của Ứng Dụng
+
+### Luồng khởi động
+
+Khi ứng dụng bắt đầu chạy:
+
+1. Flask app được tạo trong `src/app.py`.
+2. Secret key và các giá trị config mặc định được nạp.
+3. `init_db()` tạo các bảng SQLite nếu chưa tồn tại.
+4. `SchedulerService.initialize()` khởi động scheduler chạy nền.
+5. Flask-Login được cấu hình để có thể load session người dùng từ database.
+
+### Luồng request cơ bản
+
+Một request thông thường sẽ chạy theo trình tự:
+
+1. Trình duyệt gửi request đến Flask.
+2. Hàm route trong `src/app.py` nhận request đó.
+3. Route có thể gọi các hàm service trong `src/services/`.
+4. Service có thể tiếp tục gọi arXiv client hoặc lớp database.
+5. Dữ liệu được trả ngược về route.
+6. Flask render template trong `src/templates/` hoặc trả JSON.
+7. Trình duyệt hiển thị kết quả.
+
+### Luồng khám phá bài báo
+
+Đây là luồng xử lý trung tâm của dự án:
+
+1. Người dùng mở trang home hoặc discover.
+2. Người dùng nhập truy vấn tìm kiếm, hoặc hệ thống tự tạo truy vấn mặc định dựa trên interests.
+3. `fetch_items()` trong `src/services/discovery_service.py` được gọi.
+4. Service này gọi `fetch_arxiv_articles()` trong `src/clients/arxiv_client.py`.
+5. Kết quả thô từ arXiv được chuyển thành các đối tượng `PaperArticle`.
+6. Các item không hợp lệ bị lọc bỏ.
+7. Nếu có interests của user, kết quả được xếp hạng để những bài phù hợp xuất hiện trước.
+8. Kết quả được trả lại `src/app.py`.
+9. Ứng dụng lưu paper snapshot vào SQLite.
+10. Ứng dụng tính các bài báo liên quan để phục vụ trang chi tiết.
+11. Template render danh sách card bài báo ra trình duyệt.
+
+### Luồng xác thực
+
+1. Người dùng đăng ký qua `/register`.
+2. `register_user()` kiểm tra email và password, sau đó thêm tài khoản vào bảng `user_accounts`.
+3. Người dùng đăng nhập qua `/login`.
+4. `authenticate_user()` kiểm tra password hash và trạng thái throttle.
+5. Flask-Login lưu session đăng nhập.
+6. Khi đăng xuất, session version được tăng lên để vô hiệu hóa các session cũ.
+
+### Luồng cá nhân hóa
+
+1. Người dùng đã đăng nhập chọn các chủ đề quan tâm.
+2. Hệ thống lưu các interest key vào SQLite.
+3. Trước mỗi request, `reconcile_user_interests()` đảm bảo user vẫn có các topic hợp lệ và còn active.
+4. Chức năng discover có thể tự động tạo query dựa trên interests của user.
+5. Trang detail tính điểm "worth reading" dựa trên độ mới, độ liên quan và độ phổ biến.
+6. Logic notification chạy nền sẽ kiểm tra xem có bài mới phù hợp với interests hay không.
+
+## 6. Giải Thích Từng Module
+
+### `src/app.py`
+
+Đây là file trung tâm của toàn bộ dự án.
+
+Nó làm những gì:
+
+- tạo Flask app
+- đăng ký Jinja filter `md5` cho Gravatar avatar
+- khởi tạo database
+- khởi tạo scheduler
+- cấu hình Flask-Login
+- định nghĩa toàn bộ route cho trang
+- định nghĩa API endpoint và AJAX endpoint
+- điều phối giữa service, database và template
+
+Những trách nhiệm quan trọng trong file này:
+
+- có các hàm helper chuẩn hóa arXiv ID và source
+- có logic tạo query mặc định dựa trên interests
+- `before_request` làm mới auth session và buộc onboarding nếu cần
+- context processor đưa active route và notifications vào template
+- route render các trang như home, discover, login, register, interests, favourites, detail, analytics
+- route xử lý JSON hoặc AJAX như `/api/listings`, `/favourite/toggle`, và dismiss notification
+
+Tác dụng đối với toàn hệ thống:
+
+- File này đóng vai trò như bộ điều phối giao thông.
+- Nó không chứa tất cả logic, nhưng nó quyết định sẽ gọi service nào và trả page hoặc JSON nào.
+
+### `src/clients/arxiv_client.py`
+
+Module này là lớp tích hợp với arXiv.
+
+Nó làm những gì:
+
+- tạo query tìm kiếm cho arXiv
+- lấy danh sách bài báo từ arXiv
+- lấy một bài báo cụ thể theo ID
+- tách và chuẩn hóa canonical arXiv ID từ URL hoặc chuỗi raw
+- làm sạch summary
+- chuyển timestamp về dạng ISO
+- cache kết quả tìm kiếm trong bộ nhớ 1 giờ
+
+Nó hoạt động như sau:
+
+- `fetch_arxiv_articles()` gửi request tìm kiếm thông qua package `arxiv`
+- mỗi kết quả trả về được chuyển thành `PaperArticle`
+- `extract_arxiv_id()` chuẩn hóa ID để phần còn lại của hệ thống chỉ sử dụng một định dạng ID thống nhất
+- `fetch_single_paper()` được dùng làm fallback nếu trang detail không tìm thấy bài báo trong cache hoặc trong dữ liệu đã lưu
+
+Tác dụng đối với hệ thống:
+
+- Nếu không có module này, ứng dụng sẽ không có nguồn bài báo.
+- Đây là cầu nối giữa hệ thống nội bộ và nhà cung cấp dữ liệu bên ngoài.
+
+### `src/models/article.py`
+
+Module này định nghĩa model `PaperArticle`.
+
+Nó làm những gì:
+
+- lưu các trường thông tin của bài báo như title, authors, summary, URL, categories và timestamp
+- chuyển model thành dictionary bằng `to_dict()`
+- kiểm tra tính hợp lệ của đối tượng bài báo, bao gồm cấu trúc dữ liệu và arXiv-style identity hợp lệ
+
+Tác dụng đối với hệ thống:
+
+- Nó cung cấp một cấu trúc dữ liệu thống nhất cho toàn bộ ứng dụng.
+- Discovery, formatting, templates và logic lưu snapshot đều phụ thuộc vào model này.
+
+### `src/models/auth_user.py`
+
+Module này định nghĩa `AuthUser`.
+
+Nó làm những gì:
+
+- đóng gói đối tượng user đang đăng nhập cho Flask-Login
+- lưu user ID, email và session version
+
+Tác dụng đối với hệ thống:
+
+- Đây là đối tượng mà Flask-Login sử dụng để đại diện cho current authenticated user.
+
+### `src/models/advanced_features.py`
+
+Module này định nghĩa các dataclass và enum cho nhóm tính năng nâng cao.
+
+Bao gồm:
+
+- `PaperScore`
+- `PaperRelation`
+- `PaperNotification`
+- `PaperSnapshot`
+- `CategoryStats`
+- `UserMetadata`
+- các enum cho similarity type và notification type
+
+Tác dụng đối với hệ thống:
+
+- File này đóng vai trò như lớp model miền nghiệp vụ cho các tính năng nâng cao.
+- Trong một số chỗ, ứng dụng hiện tại vẫn dùng raw dictionary nhiều hơn, nhưng file này vẫn mô tả cấu trúc mong đợi của dữ liệu.
+
+### `src/services/db.py`
+
+Đây là lớp thao tác database và cũng là một trong những module quan trọng nhất của dự án.
+
+Nó làm những gì:
+
+- mở kết nối SQLite
+- tạo bảng khi khởi động
+- seed interest catalog
+- quản lý user
+- quản lý favourites
+- quản lý interest topics và lựa chọn của user
+- quản lý snapshots, scores, related papers, notifications, category stats và user metadata
+
+Những bảng được tạo trong đây:
+
+- `user_accounts`
+- `favourite_items`
+- `interest_topics`
+- `user_interest_preferences`
+- `user_interest_selections`
+- `paper_snapshots`
+- `paper_scores`
+- `paper_relations`
+- `paper_notifications`
+- `category_stats`
+- `user_metadata`
+
+Nó hoạt động như sau:
+
+- `init_db()` tạo schema và index
+- các hàm helper kiểu CRUD ẩn phần SQL thuần khỏi những nơi khác trong hệ thống
+- các service và route sẽ gọi những helper này thay vì tự viết SQL trực tiếp
+
+Tác dụng đối với hệ thống:
+
+- Đây là xương sống lưu trữ dữ liệu của ứng dụng.
+- Gần như mọi tính năng người dùng thấy được đều sẽ đọc từ hoặc ghi vào module này.
+
+### `src/services/registration_service.py`
+
+Module này xử lý logic đăng ký.
+
+Nó làm những gì:
+
+- kiểm tra định dạng email
+- kiểm tra password policy
+- ngăn submit trùng lặp trong một khoảng thời gian ngắn
+- kiểm tra email đã tồn tại hay chưa
+- tạo tài khoản mới với password hash
+
+Hành vi quan trọng:
+
+- `generate_submission_token()` tạo token cho form đăng ký
+- `register_user()` thực hiện validate và trả về một result object có cấu trúc rõ ràng
+- password được hash trước khi lưu
+
+Tác dụng đối với hệ thống:
+
+- Module này bảo vệ quá trình tạo tài khoản khỏi input không hợp lệ, tài khoản trùng lặp và submit form lặp lại.
+
+### `src/services/auth_service.py`
+
+Module này xử lý logic đăng nhập.
+
+Nó làm những gì:
+
+- kiểm tra dữ liệu form đăng nhập
+- kiểm tra user có đang bị throttle hay không
+- so sánh password hash
+- ghi nhận các lần đăng nhập thất bại
+- tạo thời điểm hết hạn session
+
+Hành vi quan trọng:
+
+- sau quá nhiều lần đăng nhập sai, user sẽ bị throttle tạm thời
+- trạng thái auth được lưu một phần trong bộ nhớ và một phần trong session để kiểm tra hết hạn và version
+
+Tác dụng đối với hệ thống:
+
+- Module này là cổng bảo mật cho việc đăng nhập và quản lý thời gian session cơ bản.
+
+### `src/services/discovery_service.py`
+
+Module này xử lý logic khám phá bài báo, là trái tim chính của ứng dụng.
+
+Nó làm những gì:
+
+- lấy bài báo từ source được chọn
+- lọc bỏ bài báo không hợp lệ
+- xếp hạng bài báo dựa trên interests của user
+- backfill thêm kết quả rộng hơn nếu số bài match trực tiếp quá ít
+- chuẩn hóa payload kết quả để route và API dùng chung
+
+Hành vi quan trọng:
+
+- `fetch_items()` là hàm service trung tâm cho chức năng discovery
+- `ListingContextKeys` định nghĩa các key bổ sung trong kết quả discovery
+- độ liên quan được tính dựa trên giao nhau giữa category của paper và interest của user
+- kết quả được sắp xếp theo relevance và recency
+
+Tác dụng đối với hệ thống:
+
+- Đây là trung tâm của tính năng paper discovery có cá nhân hóa.
+- Nó biến dữ liệu raw từ source thành kết quả sẵn sàng để hiển thị.
+
+### `src/services/result_formatter.py`
+
+Module này nhỏ nhưng quan trọng.
+
+Nó làm những gì:
+
+- chuyển một danh sách `PaperArticle` thành dictionary response cuối cùng
+
+Tác dụng đối với hệ thống:
+
+- Nó giúp route và API có cùng một định dạng kết quả thống nhất.
+
+### `src/services/advanced_service.py`
+
+Module này chứa logic recommendation và analytics nâng cao.
+
+Nó làm những gì:
+
+- tính recency score
+- tính relevance score
+- tính popularity score
+- kết hợp các điểm này thành điểm "worth reading"
+- đổi score sang star rating
+- tính độ tương đồng giữa các paper bằng TF-IDF và cosine similarity
+- lưu quan hệ related papers
+- tách từ khóa nổi bật
+- tính analytics như số lượng paper theo ngày, top authors và hot keywords
+
+Nó hoạt động như sau:
+
+- similarity giữa các paper được tính dựa trên title và summary
+- related papers được tính từ các snapshot đã lưu
+- analytics được tính trên dữ liệu snapshot nội bộ, không phải mỗi lần đều query trực tiếp lên arXiv
+
+Tác dụng đối với hệ thống:
+
+- Module này cấp sức mạnh cho những phần "thông minh" hơn của ứng dụng, như recommendation, score ở trang detail và analytics page.
+
+### `src/services/scheduler_service.py`
+
+Module này xử lý các tác vụ chạy nền.
+
+Nó làm những gì:
+
+- khởi động APScheduler
+- lập lịch kiểm tra bài báo mới theo chu kỳ
+- duyệt qua tất cả user và đối chiếu bài mới với interests của họ
+- thêm notification vào database
+
+Nó hoạt động như sau:
+
+- `SchedulerService.initialize()` khởi động background scheduler một lần
+- một job lặp lại sẽ chạy `check_new_papers_for_all_users()`
+- job này dùng snapshot đã lưu cùng với interests của user để quyết định tạo notification nào
+
+Tác dụng đối với hệ thống:
+
+- Module này thêm hành vi bất đồng bộ vào ứng dụng, giúp thông báo được tạo mà không cần user tự bấm nút.
+
+## 7. Giải Thích Từng Template Frontend
+
+### `src/templates/base.html`
+
+Đây là layout dùng chung cho nhiều trang.
+
+Nó chứa:
+
+- khung trang chung
+- navigation
+- liên kết login và logout
+- hamburger menu
+- giao diện notification
+- JavaScript chung để dismiss notification
+
+Tác dụng:
+
+- Mọi trang chính đều kế thừa layout này, vì vậy file này ảnh hưởng mạnh đến trải nghiệm giao diện tổng thể.
+
+### `src/templates/home.html`
+
+Đây là trang tìm kiếm và hiển thị danh sách bài báo chính.
+
+Nó làm những gì:
+
+- hiển thị thông báo trạng thái register, login, logout
+- hiện form tìm kiếm
+- hiện gợi ý lịch sử tìm kiếm từ session
+- render card bài báo
+- hiện pagination
+- hiện empty state và error state
+
+Tác dụng:
+
+- Đây là giao diện discovery chính mà phần lớn người dùng sẽ tương tác đầu tiên.
+
+### `src/templates/discover.html`
+
+Template này chỉ extends `home.html`.
+
+Tác dụng:
+
+- Nó tái sử dụng giao diện listing thay vì viết lại HTML cho trang discover dành cho user đã đăng nhập.
+
+### `src/templates/detail.html`
+
+Đây là trang chi tiết bài báo.
+
+Nó làm những gì:
+
+- hiển thị thông tin đầy đủ của bài báo
+- hiện điểm "worth reading"
+- cho phép user đã đăng nhập toggle favourites
+- hiện related papers
+- dùng AJAX để cập nhật trạng thái favourite mà không cần reload toàn trang
+
+Tác dụng:
+
+- Trang này nối discovery cơ bản với các tính năng tương tác sâu hơn như lưu bài, score và recommendation.
+
+### `src/templates/favourites.html`
+
+Trang này hiện danh sách bài báo đã lưu của user.
+
+Nó làm những gì:
+
+- liệt kê favourite papers
+- liên kết mỗi paper đến trang detail
+- cho phép xóa favourite theo kiểu AJAX
+
+Tác dụng:
+
+- Nó cung cấp cho user một danh sách đọc đã lưu có tính lưu trữ.
+
+### `src/templates/login.html`
+
+Trang này render form đăng nhập và hiển thị các lỗi liên quan đến form.
+
+### `src/templates/register.html`
+
+Trang này render form đăng ký, thông báo validate và hidden field cho submission token.
+
+### `src/templates/onboarding_interests.html`
+
+Trang này bắt user mới đăng nhập phải chọn tối thiểu một số interests trước khi tiếp tục sử dụng tính năng discovery.
+
+### `src/templates/interests.html`
+
+Trang này cho phép user đã tồn tại thay đổi interests của mình sau này.
+
+### `src/templates/analytics.html`
+
+Trang này hiển thị trend analytics được tính từ paper snapshots đã lưu.
+
+Nó hiển thị gì:
+
+- xu hướng số lượng paper theo ngày
+- top authors
+- hot keywords
+
+Tác dụng:
+
+- Trang này biến dữ liệu bài báo đã thu thập thành một góc nhìn tổng hợp để user dễ theo dõi.
+
+## 8. Các Module Phối Hợp Với Nhau Như Thế Nào
+
+Đây là cách các module phối hợp tổng quát:
+
+1. `src/app.py` nhận request.
+2. Nó kiểm tra auth, session và user context.
+3. Nó gọi các service như:
+   - `registration_service`
+   - `auth_service`
+   - `discovery_service`
+   - `advanced_service`
+   - `db`
+4. `discovery_service` sẽ gọi `arxiv_client` khi cần dữ liệu paper thời gian thực.
+5. `db` lưu và lấy ra các thông tin bền vững như user, favourites, interests, snapshots và notifications.
+6. `advanced_service` tính score, recommendation và analytics dựa trên dữ liệu đã lưu.
+7. `app.py` đưa dữ liệu cuối cùng vào template hoặc trả JSON.
+8. Template render frontend trên trình duyệt.
+
+Điều đó có nghĩa là:
+
+- `app.py` là bộ điều phối trung tâm
+- `clients/` đưa dữ liệu từ bên ngoài vào
+- `services/` chứa logic xử lý
+- `db.py` lưu trữ trạng thái hệ thống
+- `models/` định nghĩa hình dạng dữ liệu
+- `templates/` hiển thị dữ liệu cho user
+- `static/` tạo giao diện và style
+
+## 9. Các Luồng Tính Năng Quan Trọng
+
+### Đăng ký và đăng nhập
+
+- form register gửi POST đến `/register`
+- registration service validate và tạo user
+- form login gửi POST đến `/login`
+- auth service xác minh password
+- Flask-Login lưu session đăng nhập
+
+### Onboarding interests
+
+- sau khi đăng nhập, nếu user chưa hoàn thành onboarding thì sẽ bị chuyển đến `/onboarding/interests`
+- các topic được chọn sẽ lưu vào database
+- những request về sau có thể dùng các interests này để cá nhân hóa discovery
+
+### Discover và tìm kiếm
+
+- user tìm theo keyword hoặc category
+- nếu không có query rõ ràng, hệ thống có thể tự tạo category query dựa trên interests của user
+- kết quả arXiv được fetch, validate, xếp hạng, phân trang và render
+
+### Lưu favourite
+
+- user bấm nút trái tim trên trang detail
+- AJAX hoặc form POST gọi `/favourite/toggle`
+- database sẽ thêm hoặc xóa row tương ứng
+- sau đó trang favourites đọc dữ liệu đã lưu từ SQLite
+
+### Detail và related papers
+
+- route detail sẽ cố gắng lấy paper từ latest results trong bộ nhớ, favourites hoặc fallback fetch từ arXiv
+- score được tính dựa trên recency, relevance và popularity
+- related papers được lấy từ các quan hệ similarity đã lưu
+
+### Notifications
+
+- paper snapshots mới được lưu sau mỗi lần fetch
+- background scheduler kiểm tra bài mới có phù hợp interests không
+- nếu phù hợp thì tạo row notification
+- notification hiển thị thông qua layout dùng chung
+
+### Analytics
+
+- analytics page đọc dữ liệu snapshot đã lưu
+- số lượng paper và từ khóa được tính nội bộ
+- kết quả được hiển thị trong analytics template
+
+## 10. Phần Nào Là Backend, Frontend Và Data Layer
+
+Có thể hiểu dự án này theo mô hình đơn giản sau:
+
+- Frontend:
+  `src/templates/` + `src/static/` + JavaScript chạy trên trình duyệt
+- Backend:
+  `src/app.py` + `src/services/` + `src/clients/` + `src/models/`
+- API:
+  các JSON endpoint và AJAX endpoint do Flask expose
+- Data layer:
+  schema SQLite và các hàm helper trong `src/services/db.py`
+- External integration:
+  truy cập arXiv trong `src/clients/arxiv_client.py`
+
+## 11. Đặc Điểm Thiết Kế Quan Trọng
+
+Dự án này có một số đặc điểm thiết kế đáng chú ý:
+
+- Đây là một Flask monolith, không phải mô hình frontend và backend tách deployment riêng.
+- Nó sử dụng server-side rendering cho phần lớn các trang.
+- Nó dùng SQLite để lưu trữ, đơn giản và phù hợp với dự án học tập hoặc ứng dụng quy mô nhỏ.
+- Nó dùng arXiv làm nguồn dữ liệu bên ngoài.
+- Nó kết hợp xử lý request đồng bộ và tác vụ nền chạy theo lịch.
+- Nó thêm tính năng cá nhân hóa bằng interests, ranking, related paper logic và notifications.
+
+## 12. Cấu Trúc Kiểm Thử
+
+Test được chia thành:
+
+- `tests/integration/`
+  test luồng đầy đủ của các tính năng như discovery, login và registration
+- `tests/unit/`
+  test tập trung cho service, model và source integration
+
+Tác dụng:
+
+- Các test này giúp xác nhận cả từng module riêng lẻ lẫn luồng người dùng hoàn chỉnh đều hoạt động đúng.
+
+## 13. Tổng Kết Cuối
+
+Nhìn chung, đây là một nền tảng khám phá bài báo học thuật xây dựng bằng Flask.
+
+Ý tưởng chính của nó là:
+
+- lấy bài báo từ arXiv
+- hiển thị chúng thông qua các trang HTML
+- cho phép user tạo tài khoản và quản lý interests
+- cá nhân hóa nội dung mà user nhìn thấy
+- lưu dữ liệu paper hữu ích ở local
+- xây thêm các tính năng như favourites, related papers, analytics và notifications dựa trên dữ liệu đã lưu
+
+Nếu muốn đọc code theo thứ tự nhanh để hiểu toàn bộ hệ thống, nên đọc theo thứ tự sau:
+
+1. `src/app.py`
+2. `src/services/discovery_service.py`
+3. `src/clients/arxiv_client.py`
+4. `src/services/db.py`
+5. `src/services/auth_service.py`
+6. `src/services/registration_service.py`
+7. `src/services/advanced_service.py`
+8. `src/services/scheduler_service.py`
+9. `src/templates/`
+
+Thứ tự đọc này sẽ giúp thấy được toàn cảnh từ điểm nhận request, lấy dữ liệu, lưu trữ, cá nhân hóa cho đến render giao diện.
